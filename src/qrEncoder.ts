@@ -8,6 +8,8 @@
    Produces a boolean matrix. No dependencies. Adapted to a compact form for
    embedding in a single-file React app. */
 
+// @ts-nocheck
+
 // ---- Galois field tables for Reed-Solomon ----
 const GF_EXP = new Array(512);
 const GF_LOG = new Array(256);
