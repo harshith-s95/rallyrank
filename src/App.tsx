@@ -1647,12 +1647,16 @@ export default function App() {
   const path = window.location.pathname.toLowerCase();
   const isPrivacyPage = path === "/privacy";
   const isTermsPage = path === "/terms";
+  const isFaqPage = path === "/faq" || path === "/help";
 
   if (isPrivacyPage) {
     return <PrivacyPolicyPage />;
   }
   if (isTermsPage) {
     return <TermsOfService />;
+  }
+  if (isFaqPage) {
+    return <FAQPage />;
   }
 
   const [view, setView] = useState("landing");
@@ -2955,7 +2959,17 @@ function SiteFooter({ onContact, onLogo }) {
         >
           <Logo size={28} onDark />
         </button>
-        <div style={{ display: "flex", gap: 22, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 22, alignItems: "center", flexWrap: "wrap" }}>
+          <a
+            href="/faq"
+            style={{
+              color: C.lime,
+              textDecoration: "none",
+              font: "700 14px var(--body)",
+            }}
+          >
+            FAQ
+          </a>
           <button
             onClick={onContact}
             style={{
@@ -6305,6 +6319,11 @@ function PlayerProfilePage({ playerId, me, players, onOpenPlayer, onBack }) {
           </Card>
 
           <RecentForm playerId={player.id} sport={sport} format={format} />
+          <AchievementFeed
+            playerId={player.id}
+            players={players}
+            onOpenPlayer={onOpenPlayer}
+          />
           <RecentActivityFeed
             playerId={player.id}
             isMe={player.id === me?.id}
@@ -7139,6 +7158,251 @@ const RecentActivityFeed = React.memo(function RecentActivityFeed({
   );
 });
 
+// § ACHIEVEMENT FEED ---------------------------------------------------------
+// Strava-style feed of notable moments, computed LIVE from recent matches (no
+// extra table). Three achievement types, all derived from data we already have:
+//   • Milestone  — crossed a rating milestone (rating_before < M <= rating_after)
+//   • Upset       — won against a clearly higher-rated opponent
+//   • Streak      — won N in a row (detected from the player's recent sequence)
+// Shows 3 rows at a time; the list scrolls for more. Placed under Badges.
+const RATING_MILESTONES = [5000, 5500, 6000, 6500, 7000, 7500, 8000];
+
+const AchievementFeed = React.memo(function AchievementFeed({
+  playerId,
+  players,
+  onOpenPlayer,
+  refreshKey,
+}) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const nameOf = useCallback(
+    (id, fallback) =>
+      players.find((p) => p.id === id)?.name || fallback || "A player",
+    [players]
+  );
+
+  const load = useCallback(async () => {
+    if (!playerId) return;
+    setLoading(true);
+
+    // Pull this player's recent matches with the rating trail. rating_before/
+    // rating_after let us detect milestone crossings precisely.
+    const { data, error } = await supabase
+      .from("match_players")
+      .select(
+        `won, rating_before, rating_after, rating_delta, team, match_id,
+         matches ( id, sport, played_at )`
+      )
+      .eq("player_id", playerId);
+
+    if (error || !data) {
+      setItems([]);
+      setLoading(false);
+      return;
+    }
+
+    const rows = data
+      .filter((r) => r.matches)
+      .sort(
+        (a, b) =>
+          new Date(b.matches?.played_at || 0) -
+          new Date(a.matches?.played_at || 0)
+      );
+
+    // Opponents for these matches (to describe upsets: who did they beat?).
+    const matchIds = rows.map((r) => r.match_id).slice(0, 40);
+    let opp = [];
+    if (matchIds.length) {
+      const { data: op } = await supabase
+        .from("match_players")
+        .select(`match_id, player_id, team, rating_before, players ( id, name )`)
+        .in("match_id", matchIds);
+      opp = op || [];
+    }
+
+    const achievements = [];
+
+    // --- Milestones: did a match push the player across a milestone line? ---
+    for (const r of rows) {
+      const before = Number(r.rating_before);
+      const after = Number(r.rating_after);
+      if (!Number.isFinite(before) || !Number.isFinite(after)) continue;
+      for (const M of RATING_MILESTONES) {
+        if (before < M && after >= M) {
+          achievements.push({
+            id: `ms-${r.match_id}-${M}`,
+            kind: "milestone",
+            emoji: "📈",
+            at: r.matches?.played_at,
+            text: `reached ${M.toLocaleString()}`,
+          });
+        }
+      }
+    }
+
+    // --- Upsets: won against a clearly higher-rated opponent (300+) ---
+    for (const r of rows) {
+      if (!r.won) continue;
+      const myBefore = Number(r.rating_before);
+      if (!Number.isFinite(myBefore)) continue;
+      const theirs = opp.filter(
+        (o) => o.match_id === r.match_id && o.team !== r.team
+      );
+      // Use the strongest opponent on the other side.
+      const topOpp = theirs
+        .map((o) => Number(o.rating_before))
+        .filter((n) => Number.isFinite(n))
+        .sort((a, b) => b - a)[0];
+      if (Number.isFinite(topOpp) && topOpp - myBefore >= 300) {
+        achievements.push({
+          id: `up-${r.match_id}`,
+          kind: "upset",
+          emoji: "🎯",
+          at: r.matches?.played_at,
+          text: `upset a ${Math.round(topOpp).toLocaleString()} player`,
+        });
+      }
+    }
+
+    // --- Streaks: longest current run of wins from most recent backwards ---
+    // We emit a streak achievement at notable lengths (3, 5, 10, 20).
+    let run = 0;
+    for (const r of rows) {
+      if (r.won) run++;
+      else break;
+    }
+    const STREAK_TIERS = [20, 10, 5, 3];
+    const tier = STREAK_TIERS.find((t) => run >= t);
+    if (tier) {
+      achievements.push({
+        id: `streak-${playerId}-${tier}`,
+        kind: "streak",
+        emoji: "🔥",
+        at: rows[0]?.matches?.played_at,
+        text: `won ${run} in a row`,
+      });
+    }
+
+    // Newest first, de-duped by id, capped.
+    const seen = new Set();
+    const sorted = achievements
+      .filter((a) => (seen.has(a.id) ? false : (seen.add(a.id), true)))
+      .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))
+      .slice(0, 30);
+
+    setItems(sorted);
+    setLoading(false);
+  }, [playerId]);
+
+  useEffect(() => {
+    load();
+  }, [load, refreshKey]);
+
+  const who = nameOf(playerId, "You");
+
+  if (loading) {
+    return (
+      <Card style={{ marginBottom: 14 }} color={C.butter2}>
+        <Label color={C.mute}>Achievements</Label>
+        <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} h={44} r={12} />
+          ))}
+        </div>
+      </Card>
+    );
+  }
+
+  if (!items.length) {
+    return (
+      <Card style={{ marginBottom: 14 }} color={C.butter2}>
+        <Label color={C.mute}>Achievements</Label>
+        <p style={{ font: "500 13px var(--body)", color: C.mute, marginTop: 10 }}>
+          No achievements yet — win some matches and they'll show up here.
+        </p>
+      </Card>
+    );
+  }
+
+  // 3 visible at a time; scroll for more. Row height ~52 incl. gap.
+  const VISIBLE = 3;
+  const scrolls = items.length > VISIBLE;
+
+  return (
+    <Card style={{ marginBottom: 14 }} color={C.butter2}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <Label color={C.mute}>Achievements</Label>
+        {scrolls && (
+          <span style={{ font: "500 11px var(--body)", color: C.mute }}>
+            {items.length} total · scroll
+          </span>
+        )}
+      </div>
+      <div
+        style={{
+          marginTop: 10,
+          display: "grid",
+          gap: 8,
+          maxHeight: scrolls ? VISIBLE * 52 + (VISIBLE - 1) * 8 : "none",
+          overflowY: scrolls ? "auto" : "visible",
+          paddingRight: scrolls ? 4 : 0,
+        }}
+      >
+        {items.map((a) => (
+          <div
+            key={a.id}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "10px 12px",
+              background: "#fff",
+              borderRadius: 12,
+              border: `1px solid ${C.line}`,
+            }}
+          >
+            <span style={{ fontSize: 20, lineHeight: 1 }}>{a.emoji}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ font: "600 13px var(--body)", color: C.ink }}>
+                {onOpenPlayer && playerId ? (
+                  <button
+                    onClick={() => onOpenPlayer(playerId)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      font: "800 13px var(--body)",
+                      color: C.indigo,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {who.split(" ")[0]}
+                  </button>
+                ) : (
+                  <strong>{who.split(" ")[0]}</strong>
+                )}{" "}
+                {a.text}
+              </div>
+              {a.at && (
+                <div style={{ font: "500 11px var(--body)", color: C.mute }}>
+                  {new Date(a.at).toLocaleDateString()}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+});
+
 // § PROFILE ------------------------------------------------------------------
 // Player profile: ratings, reliability, badges, sports summary, road to Verified
 // § SHAREABLE RATING CARD ----------------------------------------------------
@@ -7721,6 +7985,16 @@ function Profile({
               </div>
             </Card>
           )}
+
+          {/* Achievement feed — sits directly under Badges. 3 at a time, scroll
+              for more. Computed live from recent matches. */}
+          <AchievementFeed
+            playerId={me.id}
+            players={players}
+            onOpenPlayer={onOpenPlayer}
+            refreshKey={ratingRefreshKey}
+          />
+
           <div
             style={{
               display: "grid",
@@ -15752,6 +16026,225 @@ function ContactPanel({ me }) {
         </Card>
       </div>
     </div>
+  );
+}
+
+// § FAQ / HELP ---------------------------------------------------------------
+// User-facing help page at /faq (and /help). Grounded in how the app actually
+// works: the 3000–8500 scale, tiers, verification, mixers, clubs, RSVP links.
+// Accordion so it's scannable rather than a wall of text.
+function FAQItem({ q, a, open, onToggle }) {
+  return (
+    <div
+      style={{
+        border: `1px solid ${C.line}`,
+        borderRadius: 14,
+        background: "#fff",
+        overflow: "hidden",
+      }}
+    >
+      <button
+        onClick={onToggle}
+        style={{
+          width: "100%",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          padding: "16px 18px",
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          textAlign: "left",
+          font: "700 15px var(--body)",
+          color: C.ink,
+        }}
+      >
+        <span>{q}</span>
+        <span
+          style={{
+            color: C.mute,
+            font: "700 18px var(--body)",
+            transform: open ? "rotate(45deg)" : "none",
+            transition: "transform .2s ease",
+            flexShrink: 0,
+          }}
+        >
+          +
+        </span>
+      </button>
+      {open && (
+        <div
+          style={{
+            padding: "0 18px 16px",
+            font: "400 14px/1.7 var(--body)",
+            color: C.mute,
+          }}
+        >
+          {a}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const FAQ_SECTIONS = [
+  {
+    heading: "Getting started",
+    items: [
+      {
+        q: "What is RallyRank?",
+        a: "RallyRank is one honest rating that follows you across every court — for badminton and pickleball, singles and doubles. You can run mixer events, find partners near your level, track every match, and see your rating update transparently.",
+      },
+      {
+        q: "How do I get started?",
+        a: "Create a profile, answer a few quick calibration questions about your skill and experience, and you'll get a starting rating. From there, play rated matches or join a mixer and your rating adjusts from real results.",
+      },
+      {
+        q: "Does it cost anything?",
+        a: "You can create a profile, get rated, join clubs, and play in mixers. For the latest on any paid features, reach us at support@rallyrank.pro.",
+      },
+    ],
+  },
+  {
+    heading: "Ratings",
+    items: [
+      {
+        q: "How does the rating scale work?",
+        a: "Ratings run on one continuous ladder from 3,000 to 8,500. New players start around 4,500. The bands are: Beginner (under 4,500), Intermediate (4,500–5,999), Advanced (6,000–6,999), and Elite (7,000+).",
+      },
+      {
+        q: "How is my rating calculated?",
+        a: "Your rating moves based on match results and the rating of who you played — beating a stronger opponent moves you up more than beating a weaker one, similar to chess Elo. Every change is shown, so you can always see why your number moved.",
+      },
+      {
+        q: "What does 'Provisional' vs 'Verified' mean?",
+        a: "You're Provisional until you've recorded at least 10 games against at least 4 different opponents. Once you cross that, you're Verified — it means your rating is based on enough varied play to be trustworthy.",
+      },
+      {
+        q: "I have separate ratings for singles and doubles?",
+        a: "Yes. Singles and doubles are tracked separately within each sport, since they're genuinely different games. You can be Advanced in doubles and Intermediate in singles, for example.",
+      },
+    ],
+  },
+  {
+    heading: "Events & mixers",
+    items: [
+      {
+        q: "What is a mixer?",
+        a: "A mixer is a session where the app builds balanced matches for you across multiple rounds — keeping partners fresh, avoiding repeat opponents, keeping rating gaps small, and giving everyone a fair number of games. You just add who's playing and hit Generate Round.",
+      },
+      {
+        q: "How do players join my event?",
+        a: "Open your event and share the invite — you get a link and a scannable QR code. Drop the link in your WhatsApp or Facebook group instead of a poll; anyone who taps it and RSVPs is added to your session automatically, so you never have to re-enter names.",
+      },
+      {
+        q: "What do the win-probability percentages mean?",
+        a: "Before each match the app shows each side's chance of winning based on the players' ratings — like a chess prediction. It updates live if you swap players in or out.",
+      },
+    ],
+  },
+  {
+    heading: "Clubs",
+    items: [
+      {
+        q: "How do I create a club?",
+        a: "From the Clubs tab, create a new club and follow the quick setup — name, sport, defaults, and an invite link/QR to fill it with members. Creating a club makes you its admin; you can also join it as a playing member separately if you play there.",
+      },
+      {
+        q: "How do members join my club?",
+        a: "Share your club's join link or QR code (in the club's owner tools). Members tap it, and they're in. Drop it in your existing group chat to bring everyone over at once.",
+      },
+      {
+        q: "Can I leave a club?",
+        a: "Yes. On any club you've joined, you'll see a Leave option. You can rejoin anytime.",
+      },
+    ],
+  },
+  {
+    heading: "Account & support",
+    items: [
+      {
+        q: "How do I share my rating?",
+        a: "From your profile, tap Share card to generate a branded image of your rating you can post to WhatsApp, Instagram, or anywhere else.",
+      },
+      {
+        q: "Something looks wrong with my rating — what do I do?",
+        a: "Every rating change is explained in your match history, so check there first. If something still looks off, email support@rallyrank.pro and we'll take a look.",
+      },
+      {
+        q: "How do I contact you?",
+        a: "Use the Contact us link in the footer, or email support@rallyrank.pro directly.",
+      },
+    ],
+  },
+];
+
+function FAQPage() {
+  // Track which item is open per "section-index" key. One open at a time per
+  // section keeps it tidy; here we allow multiple across sections.
+  const [openKey, setOpenKey] = useState(null);
+
+  return (
+    <Shell>
+      <div style={{ background: C.indigo }}>
+        <div style={{ maxWidth: 760, margin: "0 auto", padding: "20px 22px" }}>
+          <a href="/" style={{ display: "inline-block" }}>
+            <Logo size={36} onDark />
+          </a>
+        </div>
+      </div>
+      <div style={{ maxWidth: 760, margin: "0 auto", padding: "40px 22px 80px" }}>
+        <Label>Help</Label>
+        <H1>Frequently asked questions</H1>
+        <Sub>
+          Everything about ratings, mixers, and clubs. Can't find it? Email{" "}
+          support@rallyrank.pro.
+        </Sub>
+
+        {FAQ_SECTIONS.map((section, si) => (
+          <div key={section.heading} style={{ marginTop: 30 }}>
+            <h2
+              style={{
+                font: "700 18px var(--display)",
+                color: C.ink,
+                margin: "0 0 12px",
+              }}
+            >
+              {section.heading}
+            </h2>
+            <div style={{ display: "grid", gap: 8 }}>
+              {section.items.map((item, ii) => {
+                const key = `${si}-${ii}`;
+                return (
+                  <FAQItem
+                    key={key}
+                    q={item.q}
+                    a={item.a}
+                    open={openKey === key}
+                    onToggle={() =>
+                      setOpenKey(openKey === key ? null : key)
+                    }
+                  />
+                );
+              })}
+            </div>
+          </div>
+        ))}
+
+        <div style={{ marginTop: 40, display: "flex", gap: 18, flexWrap: "wrap" }}>
+          <a href="/" style={{ color: C.indigo, font: "700 14px var(--body)" }}>
+            ← Back to RallyRank
+          </a>
+          <a href="/privacy" style={{ color: C.mute, font: "600 14px var(--body)" }}>
+            Privacy
+          </a>
+          <a href="/terms" style={{ color: C.mute, font: "600 14px var(--body)" }}>
+            Terms
+          </a>
+        </div>
+      </div>
+    </Shell>
   );
 }
 
