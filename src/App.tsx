@@ -8,8 +8,6 @@ import React, {
   useCallback,
 } from "react";
 
-import PrivacyPolicy from "./PrivacyPolicy";
-
 import { supabase } from "./supabase";
 
 // Offline fallback QR encoder. The real 'qrcode' npm package is preferred at
@@ -1651,7 +1649,7 @@ export default function App() {
   const isTermsPage = path === "/terms";
 
   if (isPrivacyPage) {
-    return <PrivacyPolicy />;
+    return <PrivacyPolicyPage />;
   }
   if (isTermsPage) {
     return <TermsOfService />;
@@ -15569,6 +15567,117 @@ function ContactPanel({ me }) {
         </Card>
       </div>
     </div>
+  );
+}
+
+// § PRIVACY POLICY -----------------------------------------------------------
+// Standalone page rendered at /privacy. Styled to match the Terms page. This is
+// a STANDARD TEMPLATE describing how RallyRank handles data (Supabase auth,
+// optional Google sign-in, profile + match data) — review and adjust to your
+// actual practices before relying on it.
+function PrivacyPolicyPage() {
+  const updated = "June 2026";
+  const sections = [
+    [
+      "1. Who we are",
+      "RallyRank is a rating and event platform for badminton and pickleball players. This policy explains what information we collect, how we use it, and the choices you have. Questions? Email support@rallyrank.pro.",
+    ],
+    [
+      "2. Information you give us",
+      "When you create an account we collect your name, email address, and the details you add to your profile (such as your city, sport preferences, and an optional photo). If you sign in with Google, we receive your name, email, and profile picture from Google to set up your account.",
+    ],
+    [
+      "3. Information from playing",
+      "As you use RallyRank we store the match results, ratings, club memberships, and event participation associated with your account. This is the core data that powers your rating and the ladder.",
+    ],
+    [
+      "4. How we use your information",
+      "We use your information to operate the Service: to calculate and display ratings, run events and clubs, help players find partners near their level, and respond to support requests. We don't sell your personal information.",
+    ],
+    [
+      "5. What others can see",
+      "Some information is visible to other players by design — for example your display name, rating, and club/event participation. Your email address is not shown publicly. Be mindful of what you choose to put in your public profile.",
+    ],
+    [
+      "6. Service providers",
+      "We rely on trusted third parties to run RallyRank, including Supabase (authentication and database) and our hosting and email-delivery providers. These providers process data on our behalf and only as needed to provide their service.",
+    ],
+    [
+      "7. Data retention",
+      "We keep your information for as long as your account is active. If you delete your account, we remove or anonymize your personal information, except where we need to retain certain records for legitimate or legal reasons.",
+    ],
+    [
+      "8. Your choices",
+      "You can review and update your profile information at any time from your account settings. You can request deletion of your account by contacting us. Where applicable law gives you additional rights over your data, we'll honor them.",
+    ],
+    [
+      "9. Security",
+      "We take reasonable measures to protect your information, but no online service can guarantee perfect security. Please use a strong, unique password and keep your login details private.",
+    ],
+    [
+      "10. Children",
+      "RallyRank isn't directed at children under the age required to consent to online services in your region. If you believe a child has provided us personal information, contact us and we'll remove it.",
+    ],
+    [
+      "11. Changes to this policy",
+      "We may update this policy from time to time. When we do, we'll revise the date above. Continued use of the Service after changes take effect means you accept the updated policy.",
+    ],
+    [
+      "12. Contact",
+      "Questions or requests about your data? Reach us at support@rallyrank.pro.",
+    ],
+  ];
+
+  return (
+    <Shell>
+      <div style={{ background: C.indigo }}>
+        <div style={{ maxWidth: 760, margin: "0 auto", padding: "20px 22px" }}>
+          <a href="/" style={{ display: "inline-block" }}>
+            <Logo size={36} onDark />
+          </a>
+        </div>
+      </div>
+      <div style={{ maxWidth: 760, margin: "0 auto", padding: "40px 22px 80px" }}>
+        <Label>Legal</Label>
+        <H1>Privacy Policy</H1>
+        <Sub>Last updated: {updated}</Sub>
+
+        {sections.map(([title, body]) => (
+          <div key={title} style={{ marginTop: 26 }}>
+            <h2
+              style={{
+                font: "700 18px var(--display)",
+                color: C.ink,
+                margin: "0 0 8px",
+              }}
+            >
+              {title}
+            </h2>
+            <p
+              style={{
+                font: "400 15px/1.7 var(--body)",
+                color: C.mute,
+                margin: 0,
+              }}
+            >
+              {body}
+            </p>
+          </div>
+        ))}
+
+        <div style={{ marginTop: 40, display: "flex", gap: 18 }}>
+          <a href="/" style={{ color: C.indigo, font: "700 14px var(--body)" }}>
+            ← Back to RallyRank
+          </a>
+          <a
+            href="/terms"
+            style={{ color: C.mute, font: "600 14px var(--body)" }}
+          >
+            Terms of Service
+          </a>
+        </div>
+      </div>
+    </Shell>
   );
 }
 
