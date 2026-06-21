@@ -2971,9 +2971,9 @@ function SiteFooter({ onContact, onLogo }) {
           <a
             href="/privacy"
             style={{
-              color: C.muteOnDark,
+              color: C.lime,
               textDecoration: "none",
-              font: "500 14px var(--body)",
+              font: "700 14px var(--body)",
             }}
           >
             Privacy
@@ -2981,9 +2981,9 @@ function SiteFooter({ onContact, onLogo }) {
           <a
             href="/terms"
             style={{
-              color: C.muteOnDark,
+              color: C.lime,
               textDecoration: "none",
-              font: "500 14px var(--body)",
+              font: "700 14px var(--body)",
             }}
           >
             Terms
@@ -8384,10 +8384,9 @@ function ClubOnboarding({ me, existingClub, onDone, onCancel, reloadClubs }) {
       toast("Could not save club: " + error.message, "error");
       return null;
     }
-    // Creator auto-joins as a member (ignore duplicate).
-    await supabase
-      .from("club_members")
-      .insert({ club_id: data.id, player_id: me.id });
+    // Note: the owner is NOT auto-joined as a member. Being the admin
+    // (admin_id) is separate from being a playing member — they can join
+    // explicitly if they also play in the club.
     return data;
   };
 
@@ -8745,10 +8744,8 @@ async function claimClubOwnership(clubId, code, playerId) {
   if (upErr)
     return { ok: false, message: "Couldn't claim club: " + upErr.message };
 
-  // Owner auto-joins as a member too (ignore duplicate).
-  await supabase
-    .from("club_members")
-    .insert({ club_id: clubId, player_id: playerId });
+  // Admin status is separate from membership — we don't auto-join the owner
+  // as a playing member. They can join explicitly if they play here.
   return { ok: true };
 }
 
@@ -8844,10 +8841,7 @@ function Clubs({
       alert("Could not create club: " + error.message);
       return;
     }
-    // creator auto-joins
-    await supabase
-      .from("club_members")
-      .insert({ club_id: data.id, player_id: me.id });
+    // Owner is not auto-joined as a member (admin ≠ member).
     setF({ name: "", city: "", sport: "Both", description: "" });
     setAdding(false);
     await reloadClubs?.();
@@ -8863,6 +8857,21 @@ function Clubs({
       return;
     }
     await reloadClubs?.();
+  };
+
+  const leaveClub = async (id) => {
+    if (!clubs.find((c) => c.id === id)?.joined?.includes(me.id)) return;
+    const { error } = await supabase
+      .from("club_members")
+      .delete()
+      .eq("club_id", id)
+      .eq("player_id", me.id);
+    if (error) {
+      toast("Could not leave club: " + error.message, "error");
+      return;
+    }
+    await reloadClubs?.();
+    toast("You left the club.", "info");
   };
 
   if (selected) {
@@ -9002,9 +9011,22 @@ function Clubs({
                     Join club
                   </Btn>
                 ) : (
-                  <Pill color={C.lime} dark>
-                    Joined ✓
-                  </Pill>
+                  <>
+                    <Pill color={C.lime} dark>
+                      Joined ✓
+                    </Pill>
+                    <Btn
+                      kind="ghost"
+                      onClick={() => {
+                        if (
+                          window.confirm(`Leave ${club.name}? You can rejoin anytime.`)
+                        )
+                          leaveClub(club.id);
+                      }}
+                    >
+                      Leave
+                    </Btn>
+                  </>
                 )}
               </div>
             </div>
@@ -13618,8 +13640,30 @@ function GameCard({
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(!game.score);
   const isBadminton = event.sport === "Badminton";
-  const oddA = game.odds?.[0] || 50,
-    oddB = 100 - oddA;
+
+  // Compute win probability LIVE from whoever is currently in the match, so it
+  // stays correct even if the organizer swaps players after the round was
+  // generated. Falls back to the stored odds, then 50/50, if ratings are
+  // missing. Doubles sums both partners' ratings; singles uses the one player.
+  const fmtForOdds = (event.format || "").toLowerCase() === "singles"
+    ? "singles"
+    : "doubles";
+  // Average (not sum) of the team's ratings — summing would double the rating
+  // gap in doubles and produce absurd 0/100 predictions.
+  const teamRating = (team) => {
+    const ps = team || [];
+    if (!ps.length) return 0;
+    const total = ps.reduce(
+      (sum, p) => sum + getRating(p, event.sport, fmtForOdds),
+      0
+    );
+    return total / ps.length;
+  };
+  const r1 = teamRating(game.team1);
+  const r2 = teamRating(game.team2);
+  const liveOddA = r1 && r2 ? winPct(r1, r2) : null;
+  const oddA = liveOddA ?? game.odds?.[0] ?? 50;
+  const oddB = 100 - oddA;
 
   // Validates score against sport rules before accepting
   const submit = () => {
@@ -13728,6 +13772,47 @@ function GameCard({
           </div>
         </div>
       </div>
+      {/* Win-probability bar — visual prediction split (chess-style) */}
+      {!game.score && (
+        <div style={{ marginBottom: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              height: 10,
+              borderRadius: 99,
+              overflow: "hidden",
+              border: `1px solid ${C.line}`,
+            }}
+          >
+            <div
+              style={{
+                width: `${oddA}%`,
+                background: C.sky,
+                transition: "width .3s ease",
+              }}
+            />
+            <div
+              style={{
+                width: `${oddB}%`,
+                background: C.coral,
+                transition: "width .3s ease",
+              }}
+            />
+          </div>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              font: "600 10px var(--body)",
+              color: C.mute,
+              marginTop: 4,
+            }}
+          >
+            <span>Team A {oddA}%</span>
+            <span>{oddB}% Team B</span>
+          </div>
+        </div>
+      )}
       {/* Score display if already entered */}
       {game.score && !editing && (
         <div
