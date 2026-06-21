@@ -1,4 +1,3 @@
-
 // @ts-nocheck
 
 import React, {
@@ -23,7 +22,9 @@ import { generateQR as generateQRFallback } from "./qrEncoder";
    from anywhere. <ToastHost/> renders them. We also shim window.alert so the
    ~30 existing alert() calls become toasts automatically — no per-call edits.
    ============================================================================ */
-const _toastListeners = new Set<(t: { id: number; message: string; kind: string }) => void>();
+const _toastListeners = new Set<
+  (t: { id: number; message: string; kind: string }) => void
+>();
 let _toastId = 0;
 function toast(message: string, kind: string = "info") {
   const t = { id: ++_toastId, message: String(message), kind };
@@ -2466,6 +2467,18 @@ function Shell({ children, sport }) {
           }
         }
 
+        /* ---- Landing feature cards: 4 across, then 2, then 1 ---- */
+        @media (max-width: 920px) {
+          .rr-feature-grid {
+            grid-template-columns: 1fr 1fr !important;
+          }
+        }
+        @media (max-width: 560px) {
+          .rr-feature-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+
         @media (prefers-reduced-motion: reduce) {
           * { transition: none !important; animation: none !important; }
         }
@@ -2995,7 +3008,7 @@ function Landing({ onSignup, onSignin, onContact, onLogo }) {
         />
         <div
           style={{
-            maxWidth: 1060,
+            maxWidth: 1320,
             margin: "0 auto",
             padding: "24px 22px",
             position: "relative",
@@ -3095,14 +3108,17 @@ function Landing({ onSignup, onSignin, onContact, onLogo }) {
         </div>
       </div>
       <div
-        style={{ maxWidth: 1060, margin: "0 auto", padding: "40px 22px 60px" }}
+        style={{ maxWidth: 1320, margin: "0 auto", padding: "40px 22px 60px" }}
       >
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
+            // Force all four cards onto one row on desktop; gracefully drop to
+            // 2 columns on tablets and 1 on phones via the media-query class.
+            gridTemplateColumns: "repeat(4,1fr)",
             gap: 14,
           }}
+          className="rr-feature-grid"
         >
           {[
             [
