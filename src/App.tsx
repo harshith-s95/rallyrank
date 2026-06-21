@@ -20,7 +20,7 @@ import { generateQR as generateQRFallback } from "./qrEncoder";
    from anywhere. <ToastHost/> renders them. We also shim window.alert so the
    ~30 existing alert() calls become toasts automatically — no per-call edits.
    ============================================================================ */
-const _toastListeners = new Set();
+const _toastListeners = new Set<(t: { id: number; message: string; kind: string }) => void>();
 let _toastId = 0;
 function toast(message: string, kind: string = "info") {
   const t = { id: ++_toastId, message: String(message), kind };
