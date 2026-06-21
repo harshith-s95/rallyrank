@@ -7166,6 +7166,21 @@ function buildRatingCardSVG({
       (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])
     );
 
+  // Auto-shrink long text so it never runs off the 1080px card. Bold Verdana is
+  // fairly wide, so we estimate generously and keep a safe margin; if a line
+  // would exceed the safe width, scale the font down to fit.
+  const fitFont = (text, baseSize, maxWidth, charFactor) => {
+    const len = String(text || "").length || 1;
+    const estWidth = len * baseSize * charFactor;
+    if (estWidth <= maxWidth) return baseSize;
+    return Math.max(22, Math.floor(baseSize * (maxWidth / estWidth)));
+  };
+  // name is weight 800 (wide): factor ~0.72, safe width 880px
+  const nameSize = fitFont(name, 58, 880, 0.72);
+  const subLine = `${handle || ""}${city ? " · " + city : ""}`;
+  // sub line is regular weight: factor ~0.6, safe width 920px
+  const subSize = fitFont(subLine, 30, 920, 0.6);
+
   // 1080x1080 — ideal for Instagram / WhatsApp status.
   // NOTE: width/height AND viewBox are all required for iOS Safari to give the
   // <img> a non-zero naturalWidth when this SVG is rasterized onto a canvas.
@@ -7182,6 +7197,9 @@ function buildRatingCardSVG({
     </radialGradient>
   </defs>
 
+  <!-- Solid base first: if a mobile rasterizer drops the gradient url(#bg)
+       reference, the card still has the correct dark background, not black. -->
+  <rect width="1080" height="1080" fill="#241B3A"/>
   <rect width="1080" height="1080" fill="url(#bg)"/>
   <rect width="1080" height="1080" fill="url(#glow)"/>
   <rect x="0" y="1060" width="1080" height="20" fill="${accent}"/>
@@ -7203,10 +7221,10 @@ function buildRatingCardSVG({
   )}</text>
 
   <!-- name + handle -->
-  <text x="540" y="500" text-anchor="middle" font-family="Verdana, sans-serif" font-weight="800" font-size="58" fill="#FFF8EC">${safe(
+  <text x="540" y="500" text-anchor="middle" font-family="Verdana, sans-serif" font-weight="800" font-size="${nameSize}" fill="#FFF8EC">${safe(
     name
   )}</text>
-  <text x="540" y="548" text-anchor="middle" font-family="Verdana, sans-serif" font-size="30" fill="#B6A9D6">${safe(
+  <text x="540" y="548" text-anchor="middle" font-family="Verdana, sans-serif" font-size="${subSize}" fill="#B6A9D6">${safe(
     handle
   )}${city ? " · " + safe(city) : ""}</text>
 
