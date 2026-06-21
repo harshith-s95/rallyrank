@@ -14998,18 +14998,175 @@ function ResultTeam({ players, winner, onOpenPlayer }) {
   );
 }
 
+// Resizes an image File to a square JPEG of `size`px (default 512), center-
+// cropping so portraits/landscapes don't get squished. Returns a Blob. Avatars
+// only ever render ~72px, so 512 is crisp on any screen while staying tiny
+// (~40–70KB), which keeps Storage light and uploads fast.
+function squareResizeImage(file, size = 512, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        // Center-crop: take the largest centered square from the source.
+        const side = Math.min(img.naturalWidth, img.naturalHeight);
+        const sx = (img.naturalWidth - side) / 2;
+        const sy = (img.naturalHeight - side) / 2;
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+        URL.revokeObjectURL(url);
+        canvas.toBlob(
+          (blob) =>
+            blob ? resolve(blob) : reject(new Error("Could not process image")),
+          "image/jpeg",
+          quality
+        );
+      } catch (err) {
+        URL.revokeObjectURL(url);
+        reject(err);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Could not read image"));
+    };
+    img.src = url;
+  });
+}
+
 // § ACCOUNT ------------------------------------------------------------------
 // Profile settings: photo upload, personal info, billing placeholder, security
 function Account({ me, setMe, onLogout }) {
   const [section, setSection] = useState("personal");
+  const [photoBusy, setPhotoBusy] = useState(false);
   const fileRef = useRef(null);
-  // Handles profile photo upload from local file
-  const onPhoto = (e) => {
+
+  // Uploads the chosen image to Supabase Storage and saves the resulting public
+  // URL to the player's row. We store only the URL (small), never the image
+  // bytes, so player queries stay light. Requires a public "avatars" bucket.
+  const onPhoto = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setMe({ ...me, photo: reader.result });
-    reader.readAsDataURL(file);
+    // Basic guards: type + size (5MB cap).
+    if (!file.type.startsWith("image/")) {
+      toast("Please choose an image file.", "error");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast("Image is too large (max 5MB).", "error");
+      return;
+    }
+    if (!me?.id || me.id === "me") {
+      toast("Please sign in again before uploading.", "error");
+      return;
+    }
+
+    setPhotoBusy(true);
+    try {
+      // Resize + square-crop to 512px JPEG before upload. The user never hits a
+      // "too big" error in practice — their camera photo just becomes a tidy
+      // square avatar. Output is always JPEG, so the path uses .jpg.
+      const blob = await squareResizeImage(file, 512, 0.85);
+      const path = `${me.id}/avatar.jpg`;
+
+      const { error: upErr } = await supabase.storage
+        .from("avatars")
+        .upload(path, blob, { upsert: true, contentType: "image/jpeg" });
+      if (upErr) throw upErr;
+
+      const { data: pub } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(path);
+      // Cache-bust so a replaced photo shows immediately.
+      const url = `${pub.publicUrl}?v=${Date.now()}`;
+
+      const { error: dbErr } = await supabase
+        .from("players")
+        .update({ photo: url })
+        .eq("id", me.id);
+      if (dbErr) throw dbErr;
+
+      setMe({ ...me, photo: url });
+      toast("Photo updated.", "success");
+    } catch (err) {
+      toast("Upload failed: " + (err.message || "try again"), "error");
+    } finally {
+      setPhotoBusy(false);
+      if (fileRef.current) fileRef.current.value = ""; // allow re-picking same file
+    }
+  };
+
+  // Removes the photo: clears the DB column (we leave the stored file; it gets
+  // overwritten on next upload).
+  const removePhoto = async () => {
+    if (!me?.id || me.id === "me") return;
+    setPhotoBusy(true);
+    try {
+      const { error } = await supabase
+        .from("players")
+        .update({ photo: null })
+        .eq("id", me.id);
+      if (error) throw error;
+      setMe({ ...me, photo: null });
+    } catch (err) {
+      toast("Couldn't remove photo: " + (err.message || "try again"), "error");
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  // Persists the personal-info form to the players row. We attempt all editable
+  // fields first; if the DB rejects an unknown column (phone/club may not exist
+  // in every schema), we retry with only the columns we know exist so the save
+  // still succeeds for the core fields. Email is intentionally NOT written here
+  // — it's managed by Supabase Auth, and editing it in the players table would
+  // desync it from the real login email.
+  const [savingInfo, setSavingInfo] = useState(false);
+  const savePersonalInfo = async () => {
+    if (!me?.id || me.id === "me") {
+      toast("Please sign in again before saving.", "error");
+      return;
+    }
+    setSavingInfo(true);
+    const full = {
+      name: me.name || null,
+      city: me.city || null,
+      country: me.country || null,
+      phone: me.phone || null,
+      club: me.club || null,
+    };
+    const safe = {
+      name: me.name || null,
+      city: me.city || null,
+      country: me.country || null,
+    };
+    try {
+      let { error } = await supabase
+        .from("players")
+        .update(full)
+        .eq("id", me.id);
+      if (
+        error &&
+        /column .* does not exist|could not find|schema cache|unknown column/i.test(
+          error.message || ""
+        )
+      ) {
+        // A column (likely phone or club) isn't in this schema — save the rest.
+        ({ error } = await supabase
+          .from("players")
+          .update(safe)
+          .eq("id", me.id));
+      }
+      if (error) throw error;
+      toast("Changes saved.", "success");
+    } catch (err) {
+      toast("Couldn't save: " + (err.message || "try again"), "error");
+    } finally {
+      setSavingInfo(false);
+    }
   };
   return (
     <div>
@@ -15105,12 +15262,16 @@ function Account({ me, setMe, onLogout }) {
                     onChange={onPhoto}
                     style={{ display: "none" }}
                   />
-                  <Btn kind="ghost" onClick={() => fileRef.current?.click()}>
-                    Upload photo
+                  <Btn
+                    kind="ghost"
+                    onClick={() => fileRef.current?.click()}
+                    disabled={photoBusy}
+                  >
+                    {photoBusy ? "Uploading…" : "Upload photo"}
                   </Btn>
-                  {me.photo && (
+                  {me.photo && !photoBusy && (
                     <button
-                      onClick={() => setMe({ ...me, photo: null })}
+                      onClick={removePhoto}
                       style={{
                         marginLeft: 10,
                         font: "600 12px var(--body)",
@@ -15142,12 +15303,12 @@ function Account({ me, setMe, onLogout }) {
                     style={inp}
                   />
                 </Field>
-                <Field label="Email">
+                <Field label="Email" hint="Managed by your sign-in — can't be changed here.">
                   <input
                     value={me.email || ""}
-                    onChange={(e) => setMe({ ...me, email: e.target.value })}
+                    readOnly
                     type="email"
-                    style={inp}
+                    style={{ ...inp, background: C.butter2, color: C.mute, cursor: "not-allowed" }}
                   />
                 </Field>
                 <Field label="Country">
@@ -15178,8 +15339,12 @@ function Account({ me, setMe, onLogout }) {
                   />
                 </Field>
               </div>
-              <Btn kind="lime" onClick={() => {}}>
-                Save changes
+              <Btn
+                kind="lime"
+                onClick={savePersonalInfo}
+                disabled={savingInfo}
+              >
+                {savingInfo ? "Saving…" : "Save changes"}
               </Btn>
             </Card>
           )}
