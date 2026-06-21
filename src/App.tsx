@@ -12307,6 +12307,111 @@ async function finalizeEventRatings(event, players) {
   };
 }
 
+// § EVENT RSVP ---------------------------------------------------------------
+// Turns an event into a shareable "playing tomorrow?" invite — a replacement
+// for posting a poll in WhatsApp/FB. You drop ONE link in the group; people tap
+// it, sign in / make a quick profile, and are auto-registered (handled by the
+// deep-link resolver in <App/>). Everyone who RSVPs is a rated player, so the
+// matchmaker can balance rounds with no re-entry on your side.
+function eventRSVPLink(eventId) {
+  const origin =
+    typeof window !== "undefined"
+      ? window.location.origin
+      : "https://rallyrank.pro";
+  return `${origin}?join=${encodeURIComponent(eventId)}`;
+}
+
+function EventRSVPPanel({ event, onDark }) {
+  const link = eventRSVPLink(event.id);
+  const count = event.registeredIds?.length || 0;
+  const [copied, setCopied] = useState(false);
+
+  // The poll-style message that goes into WhatsApp/FB alongside the link.
+  const inviteText = `🏸 ${event.name} — ${fmtDT(event.date, event.time)}\nAre you in? RSVP here:`;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(`${inviteText}\n${link}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      toast(`Share this link:\n${link}`, "info");
+    }
+  };
+
+  const share = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: event.name,
+          text: inviteText,
+          url: link,
+        });
+        return;
+      }
+    } catch {
+      /* cancelled / unsupported */
+    }
+    copy();
+  };
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 16,
+        flexWrap: "wrap",
+        alignItems: "center",
+      }}
+    >
+      <div
+        style={{
+          background: "#fff",
+          borderRadius: 14,
+          padding: 8,
+          lineHeight: 0,
+        }}
+      >
+        <ClubQR value={link} size={150} />
+      </div>
+      <div style={{ flex: "1 1 240px", minWidth: 220 }}>
+        <div
+          style={{
+            font: "700 14px var(--body)",
+            color: onDark ? "#fff" : C.ink,
+            marginBottom: 4,
+          }}
+        >
+          Share instead of a poll
+        </div>
+        <p
+          style={{
+            font: "400 12px/1.6 var(--body)",
+            color: onDark ? C.muteOnDark : C.mute,
+            margin: "0 0 10px",
+          }}
+        >
+          Drop this in your WhatsApp/FB group. Everyone who taps it and RSVPs is
+          auto-added here — no recounting, no re-entering names.{" "}
+          {count > 0 && (
+            <strong style={{ color: onDark ? "#fff" : C.ink }}>
+              {count} in so far.
+            </strong>
+          )}
+        </p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Btn kind="lime" onClick={share}>
+            📲 Share invite
+          </Btn>
+          <Btn kind="ghost" onClick={copy}>
+            {copied ? "Copied ✓" : "📋 Copy link"}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // § EVENT DETAIL -------------------------------------------------------------
 // Single event view: lobby (check-in), running (round manager, scoring), results
 function EventDetail({
@@ -12467,34 +12572,11 @@ function EventDetail({
                 courts · {localEvent.rounds} rounds
               </div>
             </div>
-            {/* Share link copies event ID to clipboard */}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Btn
-                kind="lime"
-                onClick={() => {
-                  const link = `${window.location.origin}?join=${localEvent.id}`;
-                  try {
-                    navigator.clipboard.writeText(link);
-                  } catch {}
-                  alert(`Share this link:\n${link}`);
-                }}
-              >
-                📋 Share link
-              </Btn>
-            </div>
           </div>
-          {/* QR code — scan to join event */}
-          <div style={{ marginTop: 14 }}>
-            <div
-              style={{
-                font: "600 11px var(--body)",
-                color: C.muteOnDark,
-                marginBottom: 6,
-              }}
-            >
-              SCAN TO JOIN
-            </div>
-            <EventQR eventId={localEvent.id} />
+          {/* RSVP invite — replaces the WhatsApp/FB poll. Real scannable QR +
+              copy/share with a poll-style message. */}
+          <div style={{ marginTop: 16 }}>
+            <EventRSVPPanel event={localEvent} onDark />
           </div>
         </div>
       </Card>
