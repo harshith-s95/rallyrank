@@ -28,8 +28,10 @@ function toast(message: string, kind: string = "info") {
 }
 // Route legacy alert() calls through the toast system. Errors are auto-detected
 // from common phrasing so they get the red treatment.
-if (typeof window !== "undefined" && !window.__rrAlertShimmed) {
-  window.__rrAlertShimmed = true;
+const rrWindow = window as any;
+
+if (typeof window !== "undefined" && !rrWindow.__rrAlertShimmed) {
+  rrWindow.__rrAlertShimmed = true;
   window.alert = (msg) => {
     const s = String(msg);
     const isError = /fail|error|could not|cannot|unable|invalid|wrong/i.test(s);
