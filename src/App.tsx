@@ -22,7 +22,7 @@ import { generateQR as generateQRFallback } from "./qrEncoder";
    ============================================================================ */
 const _toastListeners = new Set();
 let _toastId = 0;
-function toast(message, kind = "info") {
+function toast(message: string, kind: string = "info") {
   const t = { id: ++_toastId, message: String(message), kind };
   _toastListeners.forEach((fn) => fn(t));
 }
