@@ -1162,7 +1162,7 @@ const MiniStat = ({ label, value, accent = C.indigo }) => (
   </div>
 );
 
-const AvatarBubble = ({ name, photo, size = 44 }) => (
+const AvatarBubble = React.memo(({ name, photo, size = 44 }) => (
   <div
     style={{
       width: size,
@@ -1179,7 +1179,7 @@ const AvatarBubble = ({ name, photo, size = 44 }) => (
   >
     {!photo && (name || "?")[0]}
   </div>
-);
+));
 
 // Full country dropdown
 const CountrySelect = ({ value, onChange }) => (
@@ -1193,7 +1193,25 @@ const CountrySelect = ({ value, onChange }) => (
 );
 // Dial-code dropdown keyed by ISO to prevent US/CA clash
 const DialSelect = ({ value, onChange }) => (
-  <select value={value} onChange={(e) => onChange(e.target.value)} style={inp}>
+  <select
+    value={value}
+    onChange={(e) => onChange(e.target.value)}
+    style={{
+      ...inp,
+      // Native <select> on mobile adds its own arrow over the text and clips
+      // it. Reset the appearance and draw our own arrow with right-padding so
+      // the "IN +91" label always shows fully.
+      appearance: "none",
+      WebkitAppearance: "none",
+      MozAppearance: "none",
+      paddingRight: 34,
+      backgroundImage:
+        "url(\"data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='12'%20height='8'%20viewBox='0%200%2012%208'%3E%3Cpath%20fill='%23241B3A'%20d='M1%201l5%205%205-5'/%3E%3C/svg%3E\")",
+      backgroundRepeat: "no-repeat",
+      backgroundPosition: "right 12px center",
+      textOverflow: "ellipsis",
+    }}
+  >
     {COUNTRIES.map(([n, iso, dial]) => (
       <option key={iso} value={iso}>
         {iso} +{dial}
@@ -1948,6 +1966,7 @@ export default function App() {
       const claimClubId = params.get("claimClub");
       const claimCode = params.get("code");
       const joinEventId = params.get("join");
+      const checkinEventId = params.get("checkin");
 
       let link = null;
       if (joinClubId) link = { type: "joinClub", clubId: joinClubId };
@@ -1957,6 +1976,8 @@ export default function App() {
           clubId: claimClubId,
           code: claimCode || "",
         };
+      else if (checkinEventId)
+        link = { type: "checkinEvent", eventId: checkinEventId };
       else if (joinEventId) link = { type: "joinEvent", eventId: joinEventId };
 
       if (link) {
@@ -1977,7 +1998,7 @@ export default function App() {
   const reloadEvents = useCallback(async () => {
     const { data, error } = await supabase
       .from("events")
-      .select("*, event_registrations(player_id)");
+      .select("*, event_registrations(player_id, checked_in)");
 
     if (error) {
       console.error("Events reload failed:", error);
@@ -1989,6 +2010,12 @@ export default function App() {
         ...e,
         maxPlayers: e.max_players,
         registeredIds: (e.event_registrations || []).map((r) => r.player_id),
+        // Players who have actively checked in at the venue. If the checked_in
+        // column doesn't exist yet, this is simply empty and the app falls back
+        // to using registered players for round generation.
+        checkedInIds: (e.event_registrations || [])
+          .filter((r) => r.checked_in)
+          .map((r) => r.player_id),
         rounds_data: e.rounds_data || [],
         finalized: e.finalized || false,
         checkInOpen: e.check_in_open || false,
@@ -2052,6 +2079,22 @@ export default function App() {
             setTab("events");
             toast("You're registered for the event! 🎉", "success");
           }
+        } else if (link.type === "checkinEvent") {
+          // Venue check-in QR: marks the player present (and registers a
+          // walk-in if they never RSVP'd).
+          const res = await setEventCheckIn(link.eventId, me.id, true);
+          await reloadEvents?.();
+          if (!cancelled) {
+            setActiveEventId(link.eventId);
+            setView("app");
+            setTab("events");
+            toast(
+              res.ok
+                ? "Checked in — you're on the court! ✅"
+                : "Couldn't check in: " + (res.error || "try again"),
+              res.ok ? "success" : "error"
+            );
+          }
         }
       } catch (e) {
         if (!cancelled)
@@ -2106,7 +2149,7 @@ export default function App() {
     async function loadEvents() {
       const { data, error } = await supabase
         .from("events")
-        .select("*, event_registrations(player_id)");
+        .select("*, event_registrations(player_id, checked_in)");
 
       if (error) {
         console.error("Events load failed:", error);
@@ -2118,6 +2161,9 @@ export default function App() {
           ...e,
           maxPlayers: e.max_players,
           registeredIds: (e.event_registrations || []).map((r) => r.player_id),
+          checkedInIds: (e.event_registrations || [])
+            .filter((r) => r.checked_in)
+            .map((r) => r.player_id),
           rounds_data: e.rounds_data || [],
           finalized: e.finalized || false,
           checkInOpen: e.check_in_open || false,
@@ -2509,7 +2555,7 @@ function Shell({ children, sport }) {
 // § TOPBAR + FOOTER ----------------------------------------------------------
 const TABS = [
   ["profile", "Profile"],
-  ["ladders", "Ladders"],
+  ["ladders", "Leaderboard"],
   ["clubs", "Clubs"],
   ["discover", "Discover"],
   ["events", "Events"],
@@ -3886,8 +3932,8 @@ function Auth({ mode, setMode, onAuthed, onBack, onLogo }) {
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "150px 1fr",
-                      gap: 10,
+                      gridTemplateColumns: "minmax(96px, 120px) 1fr",
+                      gap: 8,
                     }}
                   >
                     <DialSelect
@@ -3897,6 +3943,7 @@ function Auth({ mode, setMode, onAuthed, onBack, onLogo }) {
                     <input
                       value={phone}
                       placeholder="98765 43210"
+                      inputMode="tel"
                       onChange={(e) => setPhone(e.target.value)}
                       style={inp}
                     />
@@ -8278,7 +8325,7 @@ function Ladders({ players, sport, setSport, onOpenPlayer }) {
         }}
       >
         <div>
-          <Label>Live ladder · India</Label>
+          <Label>Live leaderboard</Label>
           <h1 style={{ font: "700 34px var(--display)", margin: "4px 0 0" }}>
             Rankings
           </h1>
@@ -8994,6 +9041,21 @@ function ClubOnboarding({ me, existingClub, onDone, onCancel, reloadClubs }) {
   );
 }
 
+// Marks a player present (or not) for an event by flipping checked_in on their
+// event_registrations row. Registers them first if needed (e.g. a venue walk-in
+// scanning the QR who never RSVP'd). Requires the event_registrations.checked_in
+// column (see migration note).
+async function setEventCheckIn(eventId, playerId, present) {
+  // Upsert ensures a walk-in who never registered still gets a row + checked in.
+  const { error } = await supabase
+    .from("event_registrations")
+    .upsert(
+      { event_id: eventId, player_id: playerId, checked_in: present },
+      { onConflict: "event_id,player_id" }
+    );
+  return { ok: !error, error: error?.message };
+}
+
 // § CLUBS --------------------------------------------------------------------
 // Transfers ownership of a club to a player, validating a claim code. Used by
 // the pre-created "claim your club" flow when you hand a club to an owner.
@@ -9279,27 +9341,69 @@ function Clubs({
                   {flagForCountry(club.country)} {club.city} · {club.sport}
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                }}
+              >
                 {!club.joined?.includes(me.id) ? (
                   <Btn kind="lime" onClick={() => joinClub(club.id)}>
                     Join club
                   </Btn>
                 ) : (
                   <>
-                    <Pill color={C.lime} dark>
-                      Joined ✓
-                    </Pill>
-                    <Btn
-                      kind="ghost"
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "10px 16px",
+                        borderRadius: 99,
+                        background: C.lime,
+                        color: C.indigo,
+                        font: "800 14px var(--body)",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      ✓ Joined
+                    </span>
+                    <button
                       onClick={() => {
                         if (
-                          window.confirm(`Leave ${club.name}? You can rejoin anytime.`)
+                          window.confirm(
+                            `Leave ${club.name}? You can rejoin anytime.`
+                          )
                         )
                           leaveClub(club.id);
                       }}
+                      style={{
+                        padding: "10px 16px",
+                        borderRadius: 99,
+                        background: "transparent",
+                        color: "#fff",
+                        border: "2px solid rgba(255,255,255,0.45)",
+                        font: "800 14px var(--body)",
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                        transition: "background .15s ease, border-color .15s ease",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "rgba(255,90,90,0.18)";
+                        e.currentTarget.style.borderColor = "#FF6B5E";
+                        e.currentTarget.style.color = "#FF6B5E";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "transparent";
+                        e.currentTarget.style.borderColor =
+                          "rgba(255,255,255,0.45)";
+                        e.currentTarget.style.color = "#fff";
+                      }}
                     >
                       Leave
-                    </Btn>
+                    </button>
                   </>
                 )}
               </div>
@@ -12950,6 +13054,24 @@ function EventDetail({
           checkInOpen={checkInOpen}
           regOpen={regOpen}
           onSave={save}
+          onCheckInChange={async (playerId, present) => {
+            const res = await setEventCheckIn(localEvent.id, playerId, present);
+            if (!res.ok) {
+              toast("Check-in failed: " + (res.error || "try again"), "error");
+              return;
+            }
+            // Optimistically update local state so the lobby reflects it now.
+            setLocalEvent((prev) => {
+              const set = new Set(prev.checkedInIds || []);
+              if (present) set.add(playerId);
+              else set.delete(playerId);
+              const checkedInIds = [...set];
+              const registeredIds = prev.registeredIds?.includes(playerId)
+                ? prev.registeredIds
+                : [...(prev.registeredIds || []), playerId];
+              return { ...prev, checkedInIds, registeredIds };
+            });
+          }}
         />
       )}
 
@@ -13345,9 +13467,20 @@ function EventLobby({
   checkInOpen,
   regOpen,
   onSave,
+  onCheckInChange,
 }) {
   const [addSearch, setAddSearch] = useState("");
   const registered = players.filter((p) => event.registeredIds?.includes(p.id));
+  const checkedInSet = new Set(event.checkedInIds || []);
+  const checkedInCount = registered.filter((p) => checkedInSet.has(p.id)).length;
+  const iAmCheckedIn = checkedInSet.has(me.id);
+  // Venue check-in link/QR — distinct from the RSVP link so scanning at the
+  // venue marks presence rather than just registering.
+  const checkInLink = `${
+    typeof window !== "undefined"
+      ? window.location.origin
+      : "https://rallyrank.pro"
+  }?checkin=${encodeURIComponent(event.id)}`;
   const addPlayer = (id) => {
     if (!event.registeredIds?.includes(id))
       onSave({ ...event, registeredIds: [...(event.registeredIds || []), id] });
@@ -13367,42 +13500,64 @@ function EventLobby({
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
       <Card>
         <Label>
-          Registered players ({registered.length}/{event.maxPlayers})
+          Players · {checkedInCount}/{registered.length} checked in
         </Label>
         <div style={{ display: "grid", gap: 7, marginTop: 12 }}>
-          {registered.map((p) => (
-            <div
-              key={p.id}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <div style={{ font: "600 14px var(--body)", color: C.ink }}>
-                {p.name}{" "}
-                <span style={{ font: "500 11px var(--body)", color: C.mute }}>
-                  ·{" "}
-                  {p[event.sport.toLowerCase()]?.singles?.toLocaleString() ||
-                    "—"}
-                </span>
+          {registered.map((p) => {
+            const isIn = checkedInSet.has(p.id);
+            return (
+              <div
+                key={p.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 8,
+                  opacity: isIn ? 1 : 0.55,
+                }}
+              >
+                <div style={{ font: "600 14px var(--body)", color: C.ink }}>
+                  {isIn ? "✅ " : "⬜ "}
+                  {p.name}{" "}
+                  <span style={{ font: "500 11px var(--body)", color: C.mute }}>
+                    ·{" "}
+                    {p[event.sport.toLowerCase()]?.singles?.toLocaleString() ||
+                      "—"}
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  {isOrganizer && onCheckInChange && (
+                    <button
+                      onClick={() => onCheckInChange(p.id, !isIn)}
+                      style={{
+                        font: "700 11px var(--body)",
+                        color: isIn ? C.mute : C.limeDk,
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {isIn ? "Undo" : "Check in"}
+                    </button>
+                  )}
+                  {isOrganizer && (
+                    <button
+                      onClick={() => removePlayer(p.id)}
+                      style={{
+                        font: "700 11px var(--body)",
+                        color: C.red,
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
               </div>
-              {isOrganizer && (
-                <button
-                  onClick={() => removePlayer(p.id)}
-                  style={{
-                    font: "700 11px var(--body)",
-                    color: C.red,
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                  }}
-                >
-                  Remove
-                </button>
-              )}
-            </div>
-          ))}
+            );
+          })}
           {registered.length === 0 && (
             <p style={{ font: "400 13px var(--body)", color: C.mute }}>
               No players yet.
@@ -13421,31 +13576,63 @@ function EventLobby({
                 marginTop: 8,
               }}
             >
-              The event starts in less than 1 hour. Players can check in now.
+              Players scan the QR (or tap below) to check in. Only checked-in
+              players are put into rounds — no-shows are skipped automatically.
             </p>
-            {!event.registeredIds?.includes(me.id) && regOpen && (
+
+            {/* Self check-in */}
+            {me.id !== "me" && (
               <Btn
-                kind="lime"
+                kind={iAmCheckedIn ? "ghost" : "lime"}
                 full
-                onClick={() => {
-                  const playerId = me.id === "me" ? null : me.id;
-
-                  if (!playerId) {
-                    alert(
-                      "Please log out and sign in again before registering."
-                    );
-                    return;
-                  }
-
-                  onSave({
-                    ...event,
-                    registeredIds: [...(event.registeredIds || []), playerId],
-                  });
-                }}
+                onClick={() => onCheckInChange?.(me.id, !iAmCheckedIn)}
               >
-                Register & check in
+                {iAmCheckedIn ? "✓ You're checked in — tap to undo" : "Check in"}
               </Btn>
             )}
+
+            {/* Venue check-in QR */}
+            <div
+              style={{
+                marginTop: 14,
+                display: "flex",
+                gap: 14,
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <div
+                style={{
+                  background: "#fff",
+                  padding: 8,
+                  borderRadius: 12,
+                  lineHeight: 0,
+                }}
+              >
+                <ClubQR value={checkInLink} size={120} />
+              </div>
+              <div style={{ flex: "1 1 160px", minWidth: 150 }}>
+                <div
+                  style={{
+                    font: "700 12px var(--body)",
+                    color: C.ink,
+                    marginBottom: 4,
+                  }}
+                >
+                  Scan to check in
+                </div>
+                <p
+                  style={{
+                    font: "400 11px/1.5 var(--body)",
+                    color: C.mute,
+                    margin: 0,
+                  }}
+                >
+                  Show this at the venue. Walk-ins who scan are checked in even
+                  if they didn't RSVP.
+                </p>
+              </div>
+            </div>
           </>
         ) : (
           <>
@@ -13523,9 +13710,17 @@ function EventRunning({ event, me, players, isOrganizer, onSave }) {
     [event, onSave]
   );
 
-  const registeredPlayers = players.filter((p) =>
-    event.registeredIds?.includes(p.id)
+  // Players the matchmaker should use. If anyone has checked in, build rounds
+  // ONLY from those present (no-shows auto-excluded). If nobody has checked in
+  // yet (or the column isn't set up), fall back to all registered players so
+  // older events still work.
+  const checkedInPlayers = players.filter((p) =>
+    event.checkedInIds?.includes(p.id)
   );
+  const registeredPlayers =
+    checkedInPlayers.length > 0
+      ? checkedInPlayers
+      : players.filter((p) => event.registeredIds?.includes(p.id));
 
   // Adds a new auto-generated round based on current rest state and player ratings for this sport
   const addRound = () => {
@@ -14886,7 +15081,7 @@ function Account({ me, setMe, onLogout }) {
                     <div
                       style={{ font: "400 13px var(--body)", color: C.mute }}
                     >
-                      Profile, ratings, ladders, event registration.
+                      Profile, ratings, leaderboard, event registration.
                     </div>
                   </div>
                   <Btn kind="primary" onClick={() => {}}>
@@ -16097,12 +16292,24 @@ const FAQ_SECTIONS = [
         a: "RallyRank is one honest rating that follows you across every court — for badminton and pickleball, singles and doubles. You can run mixer events, find partners near your level, track every match, and see your rating update transparently.",
       },
       {
-        q: "How do I get started?",
-        a: "Create a profile, answer a few quick calibration questions about your skill and experience, and you'll get a starting rating. From there, play rated matches or join a mixer and your rating adjusts from real results.",
+        q: "How do I create an account?",
+        a: "Tap Sign up, then sign in with Google or with your email. You'll answer a few quick calibration questions to set your starting rating, and you're ready to play.",
+      },
+      {
+        q: "How do I get my first rating?",
+        a: "During sign-up you answer a short calibration — your skill level, how often you play, and any tournament history. That gives you a starting rating (most people begin around 4,500). It sharpens as you record real matches.",
       },
       {
         q: "Does it cost anything?",
         a: "You can create a profile, get rated, join clubs, and play in mixers. For the latest on any paid features, reach us at support@rallyrank.pro.",
+      },
+      {
+        q: "Which sports does RallyRank support?",
+        a: "Badminton and pickleball. You can be rated in one or both — each is tracked separately.",
+      },
+      {
+        q: "Do I need to download an app?",
+        a: "No. RallyRank runs in your web browser on phone or computer. Just open rallyrank.pro.",
       },
     ],
   },
@@ -16111,19 +16318,56 @@ const FAQ_SECTIONS = [
     items: [
       {
         q: "How does the rating scale work?",
-        a: "Ratings run on one continuous ladder from 3,000 to 8,500. New players start around 4,500. The bands are: Beginner (under 4,500), Intermediate (4,500–5,999), Advanced (6,000–6,999), and Elite (7,000+).",
+        a: "Ratings run on one continuous ladder from 3,000 to 8,500. New players usually start around 4,500. The bands are: Beginner (under 4,500), Intermediate (4,500–5,999), Advanced (6,000–6,999), and Elite (7,000+).",
       },
       {
         q: "How is my rating calculated?",
-        a: "Your rating moves based on match results and the rating of who you played — beating a stronger opponent moves you up more than beating a weaker one, similar to chess Elo. Every change is shown, so you can always see why your number moved.",
+        a: "Your rating moves based on match results and the rating of who you played — beating a stronger opponent moves you up more than beating a weaker one, similar to chess Elo. Every change is shown in your match history, so you can always see why your number moved.",
       },
       {
         q: "What does 'Provisional' vs 'Verified' mean?",
-        a: "You're Provisional until you've recorded at least 10 games against at least 4 different opponents. Once you cross that, you're Verified — it means your rating is based on enough varied play to be trustworthy.",
+        a: "You're Provisional until you've recorded at least 10 games against at least 4 different opponents. Once you cross that, you're Verified — meaning your rating is based on enough varied play to be trustworthy.",
       },
       {
-        q: "I have separate ratings for singles and doubles?",
-        a: "Yes. Singles and doubles are tracked separately within each sport, since they're genuinely different games. You can be Advanced in doubles and Intermediate in singles, for example.",
+        q: "Why do I have separate ratings for singles and doubles?",
+        a: "Because they're genuinely different games. Within each sport, singles and doubles are tracked separately — you might be Advanced in doubles and Intermediate in singles.",
+      },
+      {
+        q: "Why did my rating go down after a loss?",
+        a: "Losses to opponents around or below your level lower your rating; the bigger the upset against you, the larger the drop. It's the same maths in reverse as a win. The exact change is shown on each match.",
+      },
+      {
+        q: "Can my rating change without me playing?",
+        a: "No — your rating only moves from matches you record. It won't drift on its own.",
+      },
+      {
+        q: "What are tiers (Beginner, Intermediate, Advanced, Elite)?",
+        a: "They're friendly labels for ranges on the scale, so you can place yourself at a glance. They're derived from your number, not set manually.",
+      },
+      {
+        q: "My rating looks wrong — what should I do?",
+        a: "Check your match history first, since every change is explained there. If it still looks off, email support@rallyrank.pro and we'll look into it.",
+      },
+    ],
+  },
+  {
+    heading: "Matches & scoring",
+    items: [
+      {
+        q: "How do I record a match?",
+        a: "Log the result with the final score and who played. Once it's recorded, both players' ratings update automatically.",
+      },
+      {
+        q: "What scores are valid?",
+        a: "Scores follow the sport's rules — for badminton, standard rally scoring; for pickleball, to your chosen target. The app checks the score is valid before accepting it.",
+      },
+      {
+        q: "What's the win-probability percentage before a match?",
+        a: "It's each side's chance of winning based on the players' current ratings — like a chess prediction. It updates live if players are swapped.",
+      },
+      {
+        q: "Can I undo or fix a wrong score?",
+        a: "If you spot a mistake, the organizer can re-enter the score in the event. For matches outside events, contact support@rallyrank.pro if you need a correction.",
       },
     ],
   },
@@ -16132,15 +16376,27 @@ const FAQ_SECTIONS = [
     items: [
       {
         q: "What is a mixer?",
-        a: "A mixer is a session where the app builds balanced matches for you across multiple rounds — keeping partners fresh, avoiding repeat opponents, keeping rating gaps small, and giving everyone a fair number of games. You just add who's playing and hit Generate Round.",
+        a: "A mixer is a session where the app builds balanced matches across multiple rounds — keeping partners fresh, avoiding repeat opponents, keeping rating gaps small, and giving everyone a fair number of games. You add who's playing and hit Generate Round.",
+      },
+      {
+        q: "How do I create an event?",
+        a: "Go to Events, create a session with a date, sport, format, and number of courts, then share the invite link so players can RSVP.",
       },
       {
         q: "How do players join my event?",
-        a: "Open your event and share the invite — you get a link and a scannable QR code. Drop the link in your WhatsApp or Facebook group instead of a poll; anyone who taps it and RSVPs is added to your session automatically, so you never have to re-enter names.",
+        a: "Share the invite — you get a link and a scannable QR code. Drop the link in your WhatsApp or Facebook group instead of a poll; anyone who taps it and RSVPs is added automatically, so you never re-enter names.",
       },
       {
-        q: "What do the win-probability percentages mean?",
-        a: "Before each match the app shows each side's chance of winning based on the players' ratings — like a chess prediction. It updates live if you swap players in or out.",
+        q: "Can I use RallyRank instead of a WhatsApp poll?",
+        a: "Yes — that's the idea. Share your event's RSVP link in the group; whoever taps it and says they're in becomes your check-in list. No counting votes, no copying names across.",
+      },
+      {
+        q: "How does the app decide the matches?",
+        a: "It balances four things at once: fairness (everyone plays a similar number of games), fresh partners, fresh opponents, and small rating gaps within each match.",
+      },
+      {
+        q: "How many courts and rounds can I run?",
+        a: "You set the number of courts and rounds when creating the event, and the app fills every court each round with distinct, balanced matches.",
       },
     ],
   },
@@ -16148,29 +16404,82 @@ const FAQ_SECTIONS = [
     heading: "Clubs",
     items: [
       {
+        q: "What's a club?",
+        a: "A club is a group of players who play together — a venue, a regular crew, or a community. Clubs have their own page, members, and invite links.",
+      },
+      {
         q: "How do I create a club?",
-        a: "From the Clubs tab, create a new club and follow the quick setup — name, sport, defaults, and an invite link/QR to fill it with members. Creating a club makes you its admin; you can also join it as a playing member separately if you play there.",
+        a: "From the Clubs tab, create a new club and follow the quick setup — name, sport, defaults, and an invite link/QR to fill it with members.",
+      },
+      {
+        q: "If I create a club, am I automatically a member?",
+        a: "No. Creating a club makes you its admin, which is separate from being a playing member. If you also play there, you can join it as a member yourself.",
       },
       {
         q: "How do members join my club?",
-        a: "Share your club's join link or QR code (in the club's owner tools). Members tap it, and they're in. Drop it in your existing group chat to bring everyone over at once.",
+        a: "Share your club's join link or QR code from the owner tools. Members tap it and they're in — drop it in your group chat to bring everyone over at once.",
       },
       {
         q: "Can I leave a club?",
-        a: "Yes. On any club you've joined, you'll see a Leave option. You can rejoin anytime.",
+        a: "Yes. On any club you've joined, tap Leave. You can rejoin anytime with the same link.",
+      },
+      {
+        q: "What's a claim link?",
+        a: "If you pre-create a club for a venue you're onboarding, you can generate a one-time claim link. When the real owner opens it and signs in, ownership of the club transfers to their account.",
+      },
+      {
+        q: "Can a club play both badminton and pickleball?",
+        a: "Yes — set the club's sport to Both, and it works for either.",
       },
     ],
   },
   {
-    heading: "Account & support",
+    heading: "Profile & sharing",
     items: [
       {
         q: "How do I share my rating?",
-        a: "From your profile, tap Share card to generate a branded image of your rating you can post to WhatsApp, Instagram, or anywhere else.",
+        a: "From your profile, tap Share card to generate a branded image of your rating you can post to WhatsApp, Instagram, or anywhere.",
       },
       {
-        q: "Something looks wrong with my rating — what do I do?",
-        a: "Every rating change is explained in your match history, so check there first. If something still looks off, email support@rallyrank.pro and we'll take a look.",
+        q: "What are badges?",
+        a: "Badges are achievements you earn — like winning streaks, playing 100 games, or winning a tournament. They show on your profile once earned.",
+      },
+      {
+        q: "What's the achievement feed?",
+        a: "It's a running list of your notable moments — reaching a rating milestone, upsetting a much higher-rated player, or stringing together wins. It sits under your badges and updates as you play.",
+      },
+      {
+        q: "Can I change my name, city, or photo?",
+        a: "Yes — edit them anytime from your profile settings.",
+      },
+      {
+        q: "Who can see my profile?",
+        a: "Other players can see things like your display name, rating, and club or event participation. Your email and phone are not shown publicly.",
+      },
+    ],
+  },
+  {
+    heading: "Account, privacy & support",
+    items: [
+      {
+        q: "How do I sign in — email, Google, or phone?",
+        a: "You can sign in with Google or email. Phone sign-in may be offered where it's enabled.",
+      },
+      {
+        q: "I didn't get my sign-in email or code. What now?",
+        a: "Check your spam folder and that the address or number is correct, then try again. If it still doesn't arrive, email support@rallyrank.pro.",
+      },
+      {
+        q: "How is my data handled?",
+        a: "We use your information to run the service — calculate ratings, run events, and help you find partners. We don't sell your personal information. See the Privacy page for details.",
+      },
+      {
+        q: "How do I delete my account?",
+        a: "Email support@rallyrank.pro and we'll remove your account and personal information.",
+      },
+      {
+        q: "Is my data secure?",
+        a: "We take reasonable measures to protect it. Use a strong, unique password and keep your login details private. No online service can promise perfect security.",
       },
       {
         q: "How do I contact you?",
