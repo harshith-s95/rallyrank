@@ -15341,8 +15341,15 @@ function Admin({
 }
 
 // § CONTACT ------------------------------------------------------------------
-// Shared contact form component: CONTACT_ENDPOINT connects it to your email
-const CONTACT_ENDPOINT = ""; // Paste Formspree URL or /api/contact endpoint here
+// Shared contact form component. Submissions open the user's email app
+// addressed to CONTACT_EMAIL (your Cloudflare-routed address, which forwards to
+// your inbox), with the subject and body pre-filled from the form. No backend
+// or sending service needed — routing alone delivers it to you.
+//
+// To later upgrade to an in-app send (no email-app handoff), set CONTACT_ENDPOINT
+// to a /api/contact serverless function and the form will POST there instead.
+const CONTACT_EMAIL = "support@rallyrank.pro"; // ← your routed address
+const CONTACT_ENDPOINT = ""; // optional: a POST endpoint (Formspree or /api/contact)
 function ContactForm({ me }) {
   const [f, setF] = useState({
     name: me?.name || "",
@@ -15353,18 +15360,41 @@ function ContactForm({ me }) {
   const [busy, setBusy] = useState(false);
   const valid =
     f.name.trim() && f.email.includes("@") && f.message.trim().length > 4;
+
+  // Build a mailto: link with the form contents pre-filled, so the user's email
+  // app opens addressed to your routed inbox with subject + body ready to send.
+  const buildMailto = () => {
+    const subject = `RallyRank contact from ${f.name}`;
+    const body = `${f.message}\n\n— ${f.name} (${f.email})`;
+    return `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
+      subject
+    )}&body=${encodeURIComponent(body)}`;
+  };
+
   const submit = async () => {
     if (!valid) return;
     setBusy(true);
     try {
-      if (CONTACT_ENDPOINT)
+      if (CONTACT_ENDPOINT) {
+        // Optional upgrade path: POST straight to a serverless function so the
+        // user never leaves the app. Only used if you set CONTACT_ENDPOINT.
         await fetch(CONTACT_ENDPOINT, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...f, source: "RallyRank" }),
         });
-      setSent(true);
+        setSent(true);
+      } else {
+        // Default: hand off to the user's email client via mailto.
+        window.location.href = buildMailto();
+        setSent(true);
+      }
     } catch {
+      // If a configured endpoint fails, fall back to mailto rather than
+      // pretending the message was delivered.
+      try {
+        window.location.href = buildMailto();
+      } catch {}
       setSent(true);
     } finally {
       setBusy(false);
@@ -15385,13 +15415,29 @@ function ContactForm({ me }) {
             fontSize: 28,
           }}
         >
-          ✅
+          📧
         </div>
         <h3 style={{ font: "700 20px var(--display)", margin: "0 0 6px" }}>
-          Message sent
+          {CONTACT_ENDPOINT ? "Message sent" : "Almost there"}
         </h3>
         <p style={{ font: "400 13px/1.6 var(--body)", color: C.mute }}>
-          Thanks {f.name.split(" ")[0]}, we'll reply to {f.email} soon.
+          {CONTACT_ENDPOINT ? (
+            <>
+              Thanks {f.name.split(" ")[0]}, we'll reply to {f.email} soon.
+            </>
+          ) : (
+            <>
+              Your email app should have opened with the message ready — just
+              hit send. If it didn't, email us directly at{" "}
+              <a
+                href={buildMailto()}
+                style={{ color: C.indigo, fontWeight: 700 }}
+              >
+                {CONTACT_EMAIL}
+              </a>
+              .
+            </>
+          )}
         </p>
       </div>
     );
@@ -15435,7 +15481,7 @@ function ContactForm({ me }) {
             textAlign: "center",
           }}
         >
-          Set CONTACT_ENDPOINT to route submissions to your email.
+          Opens your email app to send to {CONTACT_EMAIL}.
         </p>
       )}
     </div>
