@@ -1646,10 +1646,15 @@ async function registerForEvent(eventId, playerId) {
 export default function App() {
   // existing state declarations...
   // Top-level navigation state
-  const isPrivacyPage = window.location.pathname.toLowerCase() === "/privacy";
+  const path = window.location.pathname.toLowerCase();
+  const isPrivacyPage = path === "/privacy";
+  const isTermsPage = path === "/terms";
 
   if (isPrivacyPage) {
     return <PrivacyPolicy />;
+  }
+  if (isTermsPage) {
+    return <TermsOfService />;
   }
 
   const [view, setView] = useState("landing");
@@ -2952,7 +2957,7 @@ function SiteFooter({ onContact, onLogo }) {
         >
           <Logo size={28} onDark />
         </button>
-        <div style={{ display: "flex", gap: 22 }}>
+        <div style={{ display: "flex", gap: 22, alignItems: "center" }}>
           <button
             onClick={onContact}
             style={{
@@ -2965,9 +2970,26 @@ function SiteFooter({ onContact, onLogo }) {
           >
             Contact us
           </button>
-          <span style={{ color: C.muteOnDark, font: "500 14px var(--body)" }}>
-            Privacy · Terms
-          </span>
+          <a
+            href="/privacy"
+            style={{
+              color: C.muteOnDark,
+              textDecoration: "none",
+              font: "500 14px var(--body)",
+            }}
+          >
+            Privacy
+          </a>
+          <a
+            href="/terms"
+            style={{
+              color: C.muteOnDark,
+              textDecoration: "none",
+              font: "500 14px var(--body)",
+            }}
+          >
+            Terms
+          </a>
         </div>
       </div>
       <div
@@ -3066,9 +3088,6 @@ function Landing({ onSignup, onSignin, onContact, onLogo }) {
               </Pill>
               <Pill color={C.coral} dark>
                 🥒 PICKLEBALL
-              </Pill>
-              <Pill color={C.gold} dark>
-                🇮🇳 INDIA
               </Pill>
             </div>
             <h1
@@ -15550,5 +15569,118 @@ function ContactPanel({ me }) {
         </Card>
       </div>
     </div>
+  );
+}
+
+// § TERMS OF SERVICE ---------------------------------------------------------
+// Standalone page rendered at /terms (see routing in App). This is a STANDARD
+// TEMPLATE, not legal advice — have it reviewed before relying on it, and
+// adjust the governing-law / company-name placeholders to match your entity.
+function TermsOfService() {
+  const updated = "June 2026";
+  const sections = [
+    [
+      "1. Acceptance of terms",
+      "By creating an account or using RallyRank (the \"Service\"), you agree to these Terms. If you don't agree, please don't use the Service. If you use RallyRank on behalf of a club or organization, you confirm you're authorized to accept these Terms for them.",
+    ],
+    [
+      "2. Your account",
+      "You're responsible for the accuracy of the information you provide and for activity under your account. Keep your login credentials secure. You must be old enough to form a binding contract in your jurisdiction to use the Service. Notify us promptly of any unauthorized use.",
+    ],
+    [
+      "3. Ratings and match data",
+      "RallyRank calculates ratings from match results that you and other players submit. Ratings are estimates for recreational and organizational use only; they are not official sanctioning-body ratings unless explicitly stated. We may adjust, recalculate, or correct ratings and results to preserve the integrity of the ladder.",
+    ],
+    [
+      "4. Acceptable use",
+      "Don't misuse the Service: no submitting deliberately false results, manipulating ratings, harassing other players, scraping data at scale, attempting to breach security, or using the Service for anything unlawful. We may suspend or remove accounts that do.",
+    ],
+    [
+      "5. Content you submit",
+      "You retain ownership of the content you submit (such as your profile details and messages). You grant us a limited license to host and display that content as needed to operate the Service. You're responsible for ensuring you have the rights to anything you upload.",
+    ],
+    [
+      "6. Clubs and events",
+      "Club owners and organizers are responsible for the events they run, the players they invite, and any communications they send through the Service. RallyRank provides the tools but is not a party to, and isn't responsible for, the conduct of any club, event, or its participants.",
+    ],
+    [
+      "7. Service availability",
+      "We work to keep the Service running but don't guarantee it will be uninterrupted or error-free. We may change, suspend, or discontinue features at any time. We aren't liable for data loss; please keep your own records of anything important.",
+    ],
+    [
+      "8. Disclaimers",
+      "The Service is provided \"as is\" and \"as available\" without warranties of any kind, whether express or implied, including fitness for a particular purpose and non-infringement, to the fullest extent permitted by law.",
+    ],
+    [
+      "9. Limitation of liability",
+      "To the maximum extent permitted by law, RallyRank and its operators will not be liable for any indirect, incidental, or consequential damages arising from your use of the Service. Where liability cannot be excluded, it is limited to the amount you paid us (if any) in the prior twelve months.",
+    ],
+    [
+      "10. Termination",
+      "You may stop using the Service at any time. We may suspend or terminate access if you breach these Terms or if we discontinue the Service. Provisions that by their nature should survive termination (such as disclaimers and limitation of liability) will survive.",
+    ],
+    [
+      "11. Changes to these terms",
+      "We may update these Terms from time to time. When we do, we'll revise the date above. Continued use of the Service after changes take effect means you accept the updated Terms.",
+    ],
+    [
+      "12. Contact",
+      "Questions about these Terms? Reach us at support@rallyrank.pro.",
+    ],
+  ];
+
+  return (
+    <Shell>
+      <div style={{ background: C.indigo }}>
+        <div style={{ maxWidth: 760, margin: "0 auto", padding: "20px 22px" }}>
+          <a href="/" style={{ display: "inline-block" }}>
+            <Logo size={36} onDark />
+          </a>
+        </div>
+      </div>
+      <div style={{ maxWidth: 760, margin: "0 auto", padding: "40px 22px 80px" }}>
+        <Label>Legal</Label>
+        <H1>Terms of Service</H1>
+        <Sub>Last updated: {updated}</Sub>
+
+        {sections.map(([title, body]) => (
+          <div key={title} style={{ marginTop: 26 }}>
+            <h2
+              style={{
+                font: "700 18px var(--display)",
+                color: C.ink,
+                margin: "0 0 8px",
+              }}
+            >
+              {title}
+            </h2>
+            <p
+              style={{
+                font: "400 15px/1.7 var(--body)",
+                color: C.mute,
+                margin: 0,
+              }}
+            >
+              {body}
+            </p>
+          </div>
+        ))}
+
+        <div style={{ marginTop: 40, display: "flex", gap: 18 }}>
+          <a
+            href="/"
+            style={{ color: C.indigo, font: "700 14px var(--body)" }}
+          >
+            ← Back to RallyRank
+          </a>
+          <a
+            href="/privacy"
+            style={{ color: C.mute, font: "600 14px var(--body)" }}
+          >
+            Privacy Policy
+          </a>
+        </div>
+      </div>
+    </Shell>
   );
 }
