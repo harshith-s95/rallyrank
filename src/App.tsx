@@ -364,7 +364,7 @@ const SKILL_Q = [
   },
   {
     icon: "💪",
-    title: "Fitness / endurance",
+    title: "Fitness / Endurance",
     q: "How long before your performance drops?",
     anchors: [
       [1, "About 1 game."],
@@ -1680,9 +1680,32 @@ export default function App() {
   const [view, setView] = useState("landing");
   const [authMode, setAuthMode] = useState("signup");
   const [me, setMe] = useState(null);
-  const [tab, setTab] = useState("profile");
+  // Restore the last main tab so switching away on mobile (which can reload the
+  // page in the background) returns you to where you were, not the dashboard.
+  // Only real nav tabs are restored — transient views like a player's profile
+  // aren't, and a deep link (handled later) still takes priority.
+  const MAIN_TABS = ["profile", "ladders", "clubs", "discover", "events", "admin"];
+  const [tab, setTab] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem("rr_active_tab");
+      return saved && MAIN_TABS.includes(saved) ? saved : "profile";
+    } catch {
+      return "profile";
+    }
+  });
   const [sport, setSport] = useState("badminton");
   const [players, setPlayers] = useState([]);
+
+  // Remember the current main tab so it survives a background reload on mobile.
+  useEffect(() => {
+    try {
+      if (MAIN_TABS.includes(tab))
+        sessionStorage.setItem("rr_active_tab", tab);
+    } catch {
+      /* storage unavailable — non-fatal */
+    }
+  }, [tab]);
+
   const [clubs, setClubs] = useState([]);
   const [events, setEvents] = useState([]);
   const [activeEventId, setActiveEventId] = useState(null); //
@@ -2342,6 +2365,7 @@ export default function App() {
             sport={sport}
             setSport={setSport}
             reloadPlayers={reloadPlayers}
+            onOpenPlayer={openPlayerProfile}
             onLogMatch={(opponentId) => {
               setLogMatchOpponent(opponentId || null);
               setTab("events");
@@ -6271,8 +6295,9 @@ function PlayerProfilePage({ playerId, me, players, onOpenPlayer, onBack }) {
                 marginTop: 4,
               }}
             >
-              @{player.handle} · {flagForCountry(player.country)}{" "}
-              {player.city || "—"}
+              @{player.handle}
+              {player.member_no ? ` · #${player.member_no}` : ""} ·{" "}
+              {flagForCountry(player.country)} {player.city || "—"}
             </div>
             {(() => {
               const psd = player[sport] || {};
@@ -9735,13 +9760,32 @@ function PlayerDiscovery({
   setSport,
   reloadPlayers,
   onLogMatch,
+  onOpenPlayer,
 }) {
   const [fmt, setFmt] = useState("singles");
   const [range, setRange] = useState(400); // ±rating window
   const [intent, setIntent] = useState("challenge"); // challenge | partner | mixer
   const [sent, setSent] = useState(new Set()); // IDs challenged this session
   const [savingAvail, setSavingAvail] = useState(false);
+  const [query, setQuery] = useState(""); // name/handle search
   const myRating = me?.[sport]?.[fmt] || 5000;
+
+  // Free-text search across ALL players by name or handle (not limited to
+  // nearby rating), so you can find a specific person. Member number + handle
+  // + city are shown on each result to tell same-named players apart.
+  const searchResults = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return players
+      .filter((p) => p.id !== me?.id && !p.banned && !p.merged_into)
+      .filter((p) => {
+        const name = (p.name || "").toLowerCase();
+        const handle = String(p.handle || "").toLowerCase();
+        return name.includes(q) || handle.includes(q);
+      })
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+      .slice(0, 12);
+  }, [query, players, me?.id]);
 
   // Am I currently marked available? (expiry in the future)
   const myAvailUntil = me?.available_until
@@ -9850,6 +9894,87 @@ function PlayerDiscovery({
           sports={["badminton", "pickleball"]}
         />
       </div>
+
+      {/* Search for a specific player by name or handle */}
+      <Card style={{ marginBottom: 14 }}>
+        <Label>Search players</Label>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by name or @handle…"
+          style={{ ...inp, marginTop: 8 }}
+        />
+        {query.trim().length >= 2 && (
+          <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+            {searchResults.length === 0 && (
+              <p style={{ font: "500 13px var(--body)", color: C.mute }}>
+                No players match “{query.trim()}”.
+              </p>
+            )}
+            {searchResults.map((p) => {
+              const r = p[sport]?.[fmt];
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => onOpenPlayer?.(p.id)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "10px 12px",
+                    background: "#fff",
+                    border: `1px solid ${C.line}`,
+                    borderRadius: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  <AvatarBubble name={p.name} photo={p.photo} size={38} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ font: "700 14px var(--body)", color: C.ink }}>
+                      {p.name}
+                      {p.member_no ? (
+                        <span
+                          style={{
+                            font: "700 11px var(--body)",
+                            color: C.mute,
+                            marginLeft: 6,
+                          }}
+                        >
+                          #{p.member_no}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div
+                      style={{
+                        font: "500 12px var(--body)",
+                        color: C.mute,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {p.handle ? `@${String(p.handle).replace(/^@/, "")}` : ""}
+                      {p.city ? ` · ${p.city}` : ""}
+                    </div>
+                  </div>
+                  {r ? (
+                    <div
+                      style={{
+                        font: "800 15px var(--display)",
+                        color: C.indigo,
+                      }}
+                    >
+                      {r.toLocaleString()}
+                    </div>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Card>
 
       {/* Incoming/outgoing challenge requests. Accepting a challenge jumps to
           the Log a match panel under Events with that opponent prefilled. */}
