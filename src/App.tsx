@@ -1712,6 +1712,7 @@ const ONB_STEPS = [
   "frequency",
   "skill",
   "calibration",
+  "organizer", // Do you run/manage a club?
   "result",
 ];
 
@@ -1907,6 +1908,7 @@ export default function App() {
             city: player.city || null,
             state: player.state || null,
             country: player.country || "US",
+            is_organizer: player.is_organizer || false,
             gender: player.gender || null,
             dominant_hand: player.dominant_hand || player.hand || null,
             sports: player.sports || [],
@@ -4388,6 +4390,7 @@ function Onboarding({ onDone, onExit, onLogo, prefill }) {
     country: "IN",
     city: "",
     state: "",
+    is_organizer: false,
     gender: "",
     hand: "",
     dob: "",
@@ -4416,6 +4419,7 @@ function Onboarding({ onDone, onExit, onLogo, prefill }) {
       city: d.city || "—",
       state: d.state || null,
       country: d.country,
+      is_organizer: d.is_organizer || false,
       handle:
         "@" +
         (d.name || "you")
@@ -4623,6 +4627,7 @@ function Onboarding({ onDone, onExit, onLogo, prefill }) {
           {step === "skill" && <ONB_SkillStep d={d} set={set} />}
           {step === "tournament" && <ONB_TournamentStep d={d} set={set} />}
           {step === "calibration" && <ONB_CalibStep d={d} set={set} />}
+          {step === "organizer" && <ONB_OrganizerStep d={d} set={set} />}
           {step === "result" && <ONB_ResultStep d={d} seed={seed} />}
           <div
             style={{
@@ -5174,6 +5179,80 @@ function ONB_ClubStep({ d, set }) {
     </div>
   );
 }
+// Onboarding step: do you run/manage a club or organise sessions?
+// Sets is_organizer flag which notifies the app owner to verify & promote them.
+function ONB_OrganizerStep({ d, set }) {
+  return (
+    <div>
+      <Label color={C.limeDk}>Almost there</Label>
+      <H1>Do you run a club or organise sessions?</H1>
+      <Sub>
+        Club managers and organizers get extra tools — member management, faster
+        event setup, and a club dashboard. We'll verify and enable them for you.
+      </Sub>
+      <div style={{ display: "grid", gap: 12, marginTop: 24 }}>
+        <button
+          onClick={() => set({ is_organizer: false })}
+          style={{
+            textAlign: "left",
+            padding: "18px 20px",
+            borderRadius: 16,
+            cursor: "pointer",
+            font: "600 15px var(--body)",
+            color: C.ink,
+            background: !d.is_organizer ? C.lime + "22" : "#fff",
+            border: `2px solid ${!d.is_organizer ? C.limeDk : C.line}`,
+          }}
+        >
+          <div style={{ font: "700 16px var(--body)", marginBottom: 4 }}>
+            🏸 Just a player
+          </div>
+          <div style={{ font: "400 13px var(--body)", color: C.mute }}>
+            I play in sessions and events organised by others.
+          </div>
+        </button>
+        <button
+          onClick={() => set({ is_organizer: true })}
+          style={{
+            textAlign: "left",
+            padding: "18px 20px",
+            borderRadius: 16,
+            cursor: "pointer",
+            font: "600 15px var(--body)",
+            color: C.ink,
+            background: d.is_organizer ? C.lime + "22" : "#fff",
+            border: `2px solid ${d.is_organizer ? C.limeDk : C.line}`,
+          }}
+        >
+          <div style={{ font: "700 16px var(--body)", marginBottom: 4 }}>
+            🏆 I run or manage a club / sessions
+          </div>
+          <div style={{ font: "400 13px var(--body)", color: C.mute }}>
+            I organise events, manage members, or run a badminton/pickleball
+            club. I'd like access to club management tools.
+          </div>
+        </button>
+      </div>
+      {d.is_organizer && (
+        <div
+          style={{
+            marginTop: 16,
+            padding: "12px 16px",
+            background: C.butter2,
+            borderRadius: 12,
+            font: "400 13px/1.6 var(--body)",
+            color: C.mute,
+          }}
+        >
+          ✅ Got it — after you finish setup, your request is sent to RallyRank.
+          We'll verify and enable your club management tools within 24 hours.
+          You'll get a notification when it's done.
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Final onboarding step: shows the computed rating with a breakdown
 function ONB_ResultStep({ d, seed }) {
   const tier = TIER(seed.final);
@@ -8162,7 +8241,253 @@ function Profile({
       </Card>
       {profileTab === "overview" && (
         <>
-          {/* Profile completion — drives engagement; hides at 100% */}
+          {/* Owner dashboard — only visible to CLUB_ADMIN, ORGANIZER, OWNER */}
+          {["CLUB_ADMIN", "ORGANIZER", "OWNER"].includes(me.role) && (() => {
+            const myClubs = (clubs || []).filter(
+              (c) => c.adminId === me.id
+            );
+            const myEvents = (events || [])
+              .filter(
+                (e) =>
+                  e.admin_id === me.id ||
+                  e.organizers?.includes(me.id) ||
+                  (e.club &&
+                    myClubs.some((c) => c.name === e.club))
+              )
+              .filter((e) => e.status === "Open" || e.status === "Live")
+              .slice(0, 3);
+            const totalMembers = myClubs.reduce(
+              (s, c) => s + (c.members || 0),
+              0
+            );
+            return (
+              <Card
+                style={{ marginBottom: 14, background: C.indigo }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 14,
+                  }}
+                >
+                  <Label color={C.lime}>Club Owner Dashboard</Label>
+                  <span
+                    style={{
+                      font: "600 11px var(--body)",
+                      color: C.muteOnDark,
+                      background: "rgba(255,255,255,.1)",
+                      padding: "3px 8px",
+                      borderRadius: 99,
+                    }}
+                  >
+                    {ROLE_META[me.role]?.[0] || me.role}
+                  </span>
+                </div>
+
+                {/* Stats row */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3,1fr)",
+                    gap: 10,
+                    marginBottom: 14,
+                  }}
+                >
+                  {[
+                    ["🏟️", myClubs.length, "Clubs"],
+                    ["👥", totalMembers, "Members"],
+                    ["📅", myEvents.length, "Active events"],
+                  ].map(([icon, val, label]) => (
+                    <div
+                      key={label}
+                      style={{
+                        background: "rgba(255,255,255,.08)",
+                        borderRadius: 12,
+                        padding: "12px 10px",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div style={{ fontSize: 20 }}>{icon}</div>
+                      <div
+                        style={{
+                          font: "800 22px var(--display)",
+                          color: "#fff",
+                          lineHeight: 1.1,
+                        }}
+                      >
+                        {val}
+                      </div>
+                      <div
+                        style={{
+                          font: "500 11px var(--body)",
+                          color: C.muteOnDark,
+                        }}
+                      >
+                        {label}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Club list */}
+                {myClubs.length > 0 && (
+                  <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+                    {myClubs.map((c) => (
+                      <div
+                        key={c.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          background: "rgba(255,255,255,.06)",
+                          borderRadius: 12,
+                          padding: "10px 12px",
+                        }}
+                      >
+                        <span style={{ fontSize: 22 }}>
+                          {c.emoji || "🏸"}
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div
+                            style={{
+                              font: "700 13px var(--body)",
+                              color: "#fff",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {c.name}
+                          </div>
+                          <div
+                            style={{
+                              font: "500 11px var(--body)",
+                              color: C.muteOnDark,
+                            }}
+                          >
+                            {c.members || 0} members
+                            {c.city ? ` · ${c.city}` : ""}
+                          </div>
+                        </div>
+                        <div
+                          style={{
+                            font: "700 11px var(--body)",
+                            color: C.lime,
+                          }}
+                        >
+                          {(c.joined || []).length > 0
+                            ? `${(c.joined || []).length} joined`
+                            : "0 joined"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Upcoming active events */}
+                {myEvents.length > 0 && (
+                  <div>
+                    <div
+                      style={{
+                        font: "600 11px var(--body)",
+                        color: C.muteOnDark,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        marginBottom: 8,
+                      }}
+                    >
+                      Active events
+                    </div>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      {myEvents.map((e) => (
+                        <button
+                          key={e.id}
+                          onClick={() => onOpenEvent?.(e.id)}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            background: "rgba(255,255,255,.06)",
+                            border: "none",
+                            borderRadius: 10,
+                            padding: "9px 12px",
+                            cursor: "pointer",
+                            textAlign: "left",
+                          }}
+                        >
+                          <div>
+                            <div
+                              style={{
+                                font: "700 12px var(--body)",
+                                color: "#fff",
+                              }}
+                            >
+                              {e.name}
+                            </div>
+                            <div
+                              style={{
+                                font: "500 11px var(--body)",
+                                color: C.muteOnDark,
+                              }}
+                            >
+                              {fmtDT(e.date, e.time)} ·{" "}
+                              {e.registeredIds?.length || 0} registered
+                            </div>
+                          </div>
+                          <span
+                            style={{
+                              font: "700 10px var(--body)",
+                              color:
+                                e.status === "Live" ? C.coral : C.lime,
+                              background: "rgba(255,255,255,.1)",
+                              padding: "3px 8px",
+                              borderRadius: 99,
+                            }}
+                          >
+                            {e.status}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {myClubs.length === 0 && (
+                  <p
+                    style={{
+                      font: "400 13px/1.6 var(--body)",
+                      color: C.muteOnDark,
+                      margin: 0,
+                    }}
+                  >
+                    You haven't created any clubs yet. Go to the Clubs tab
+                    to set one up and invite your members.
+                  </p>
+                )}
+
+                {/* Pending verification nudge for unverified organizers */}
+                {me.is_organizer && me.role === "PLAYER" && (
+                  <div
+                    style={{
+                      marginTop: 14,
+                      padding: "10px 14px",
+                      background: "rgba(255,193,75,.15)",
+                      border: "1px solid rgba(255,193,75,.3)",
+                      borderRadius: 12,
+                      font: "500 12px/1.6 var(--body)",
+                      color: C.gold,
+                    }}
+                  >
+                    ⏳ Your organizer request is pending. We'll verify and
+                    promote your account within 24 hours. Email
+                    support@rallyrank.pro to speed it up.
+                  </div>
+                )}
+              </Card>
+            );
+          })()}
           {completionPct < 100 && (
             <Card style={{ marginBottom: 14 }}>
               <div
@@ -10746,7 +11071,32 @@ function EventsList({
             {loggingMatch ? "Close" : "🏸 Log a match"}
           </Btn>
           {canHost && (
-            <Btn kind="lime" onClick={() => setCreating(true)}>
+            <Btn
+              kind="lime"
+              onClick={() => {
+                // For club admins, pre-fill event settings from their
+                // home club's defaults so setup is near-zero friction.
+                const isAdmin = ["CLUB_ADMIN", "ORGANIZER", "OWNER"].includes(
+                  me?.role
+                );
+                if (isAdmin && clubs?.length) {
+                  const homeClub =
+                    clubs.find((c) => c.adminId === me.id && c.id === me.home_club_id) ||
+                    clubs.find((c) => c.adminId === me.id);
+                  if (homeClub) {
+                    setPrefillEvent({
+                      name: homeClub.name + " Session",
+                      sport: homeClub.default_sport || homeClub.sport || "Badminton",
+                      format: homeClub.default_format || "Doubles",
+                      courts: homeClub.home_courts || 2,
+                      club: homeClub.name,
+                      recurrence: "weekly",
+                    });
+                  }
+                }
+                setCreating(true);
+              }}
+            >
               + Host event
             </Btn>
           )}
@@ -15752,6 +16102,48 @@ function Account({ me, setMe, onLogout }) {
                     style={inp}
                   />
                 </Field>
+                {/* Organizer flag — lets existing users signal they manage a
+                    club without re-onboarding. Shows in Admin as a prompt to
+                    promote them to CLUB_ADMIN. */}
+                <div style={{ gridColumn: "1/-1" }}>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      cursor: "pointer",
+                      padding: "12px 14px",
+                      borderRadius: 12,
+                      border: `2px solid ${me.is_organizer ? C.limeDk : C.line}`,
+                      background: me.is_organizer ? C.lime + "11" : "#fff",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!me.is_organizer}
+                      onChange={(e) =>
+                        setMe({ ...me, is_organizer: e.target.checked })
+                      }
+                      style={{ width: 18, height: 18, cursor: "pointer" }}
+                    />
+                    <div>
+                      <div style={{ font: "700 14px var(--body)", color: C.ink }}>
+                        I manage a club or organise sessions
+                      </div>
+                      <div
+                        style={{
+                          font: "400 12px var(--body)",
+                          color: C.mute,
+                          marginTop: 2,
+                        }}
+                      >
+                        {me.is_organizer && me.role === "PLAYER"
+                          ? "⏳ Verification pending — we'll enable your club tools within 24h."
+                          : "Request access to club management tools."}
+                      </div>
+                    </div>
+                  </label>
+                </div>
               </div>
               <Btn
                 kind="lime"
@@ -16340,6 +16732,13 @@ function Admin({
                   <Pill color={ROLE_META[p.role]?.[1] || C.mute}>
                     {ROLE_META[p.role]?.[0] || p.role}
                   </Pill>
+                  {/* Organizer request — player flagged they manage a club,
+                      needs promotion to CLUB_ADMIN to unlock owner tools. */}
+                  {p.is_organizer && p.role === "PLAYER" && (
+                    <Pill color={C.gold} dark>
+                      🏆 Wants organizer
+                    </Pill>
+                  )}
                 </div>
 
                 {/* action row */}
