@@ -10732,10 +10732,15 @@ function EventCreation({ me, players, onDone, onCancel }) {
   );
 
   const finish = () => {
+    // Ensure max players is a valid number meeting the format floor, even if the
+    // user submitted before the field's onBlur fired.
+    const floor = f.format === "Singles" ? 2 : 4;
+    const cleanMax = Math.max(floor, parseInt(f.maxPlayers, 10) || floor);
     const ev = {
       id: crypto.randomUUID(),
       inviteCode: Math.random().toString(36).substring(2, 8).toUpperCase(),
       ...f,
+      maxPlayers: cleanMax,
       status: "Open",
       entrants: 1,
       checkInOpen: false,
@@ -10871,16 +10876,33 @@ function EventCreation({ me, players, onDone, onCancel }) {
                 style={inp}
               />
             </Field>
-            <Field label="Max players">
+            <Field
+              label="Max players"
+              hint={
+                f.format === "Singles"
+                  ? "Any number, 2 or more."
+                  : "Any number, 4 or more."
+              }
+            >
               <input
                 type="number"
-                min="4"
+                min={f.format === "Singles" ? 2 : 4}
                 max="128"
-                step="4"
+                step="1"
                 value={f.maxPlayers}
-                onChange={(e) =>
-                  set({ maxPlayers: parseInt(e.target.value) || 16 })
-                }
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  // Allow the field to be cleared/typed freely; only coerce to a
+                  // number when there's a value, so typing "5", "9", etc. works.
+                  set({ maxPlayers: raw === "" ? "" : parseInt(raw, 10) });
+                }}
+                onBlur={(e) => {
+                  // On leaving the field, enforce the format floor so an empty or
+                  // too-small value doesn't slip through.
+                  const floor = f.format === "Singles" ? 2 : 4;
+                  const n = parseInt(e.target.value, 10);
+                  if (!n || n < floor) set({ maxPlayers: floor });
+                }}
                 style={inp}
               />
             </Field>
