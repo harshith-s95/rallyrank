@@ -8191,23 +8191,32 @@ function Profile({
 >
   <SportToggle sport={sport} setSport={setSport} sports={me.sports} />
 
-  <button
-    onClick={() => shareRatingCard(me, sport)}
+  {/* Share card — wrapped in same pill container as SportToggle so heights match */}
+  <div
     style={{
-      font: "700 14px var(--body)",
-      padding: "9px 16px",
-      borderRadius: 99,
-      cursor: "pointer",
-      border: "none",
+      display: "inline-flex",
       background: C.sky,
-      color: C.indigo,
-      whiteSpace: "nowrap",
-      minHeight: 38,
+      borderRadius: 99,
+      padding: 4,
       marginLeft: "auto",
     }}
   >
-    📲 Share card
-  </button>
+    <button
+      onClick={() => shareRatingCard(me, sport)}
+      style={{
+        font: "700 14px var(--body)",
+        padding: "9px 16px",
+        borderRadius: 99,
+        cursor: "pointer",
+        border: "none",
+        background: "transparent",
+        color: C.indigo,
+        whiteSpace: "nowrap",
+      }}
+    >
+      📲 Share card
+    </button>
+  </div>
 </div>
       </Card>
       <Card style={{ marginBottom: 14 }} pad={10}>
@@ -8238,253 +8247,6 @@ function Profile({
       </Card>
       {profileTab === "overview" && (
         <>
-          {/* Owner dashboard — only visible to CLUB_ADMIN, ORGANIZER, OWNER */}
-          {["CLUB_ADMIN", "ORGANIZER", "OWNER"].includes(me.role) && (() => {
-            const myClubs = (clubs || []).filter(
-              (c) => c.adminId === me.id
-            );
-            const myEvents = (events || [])
-              .filter(
-                (e) =>
-                  e.admin_id === me.id ||
-                  e.organizers?.includes(me.id) ||
-                  (e.club &&
-                    myClubs.some((c) => c.name === e.club))
-              )
-              .filter((e) => e.status === "Open" || e.status === "Live")
-              .slice(0, 3);
-            const totalMembers = myClubs.reduce(
-              (s, c) => s + (c.members || 0),
-              0
-            );
-            return (
-              <Card
-                style={{ marginBottom: 14, background: C.indigo }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: 14,
-                  }}
-                >
-                  <Label color={C.lime}>Club Owner Dashboard</Label>
-                  <span
-                    style={{
-                      font: "600 11px var(--body)",
-                      color: C.muteOnDark,
-                      background: "rgba(255,255,255,.1)",
-                      padding: "3px 8px",
-                      borderRadius: 99,
-                    }}
-                  >
-                    {ROLE_META[me.role]?.[0] || me.role}
-                  </span>
-                </div>
-
-                {/* Stats row */}
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3,1fr)",
-                    gap: 10,
-                    marginBottom: 14,
-                  }}
-                >
-                  {[
-                    ["🏟️", myClubs.length, "Clubs"],
-                    ["👥", totalMembers, "Members"],
-                    ["📅", myEvents.length, "Active events"],
-                  ].map(([icon, val, label]) => (
-                    <div
-                      key={label}
-                      style={{
-                        background: "rgba(255,255,255,.08)",
-                        borderRadius: 12,
-                        padding: "12px 10px",
-                        textAlign: "center",
-                      }}
-                    >
-                      <div style={{ fontSize: 20 }}>{icon}</div>
-                      <div
-                        style={{
-                          font: "800 22px var(--display)",
-                          color: "#fff",
-                          lineHeight: 1.1,
-                        }}
-                      >
-                        {val}
-                      </div>
-                      <div
-                        style={{
-                          font: "500 11px var(--body)",
-                          color: C.muteOnDark,
-                        }}
-                      >
-                        {label}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Club list */}
-                {myClubs.length > 0 && (
-                  <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
-                    {myClubs.map((c) => (
-                      <div
-                        key={c.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                          background: "rgba(255,255,255,.06)",
-                          borderRadius: 12,
-                          padding: "10px 12px",
-                        }}
-                      >
-                        <span style={{ fontSize: 22 }}>
-                          {c.emoji || "🏸"}
-                        </span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div
-                            style={{
-                              font: "700 13px var(--body)",
-                              color: "#fff",
-                              whiteSpace: "nowrap",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                            }}
-                          >
-                            {c.name}
-                          </div>
-                          <div
-                            style={{
-                              font: "500 11px var(--body)",
-                              color: C.muteOnDark,
-                            }}
-                          >
-                            {c.members || 0} members
-                            {c.city ? ` · ${c.city}` : ""}
-                          </div>
-                        </div>
-                        <div
-                          style={{
-                            font: "700 11px var(--body)",
-                            color: C.lime,
-                          }}
-                        >
-                          {(c.joined || []).length > 0
-                            ? `${(c.joined || []).length} joined`
-                            : "0 joined"}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Upcoming active events */}
-                {myEvents.length > 0 && (
-                  <div>
-                    <div
-                      style={{
-                        font: "600 11px var(--body)",
-                        color: C.muteOnDark,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.05em",
-                        marginBottom: 8,
-                      }}
-                    >
-                      Active events
-                    </div>
-                    <div style={{ display: "grid", gap: 6 }}>
-                      {myEvents.map((e) => (
-                        <button
-                          key={e.id}
-                          onClick={() => onOpenEvent?.(e.id)}
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            background: "rgba(255,255,255,.06)",
-                            border: "none",
-                            borderRadius: 10,
-                            padding: "9px 12px",
-                            cursor: "pointer",
-                            textAlign: "left",
-                          }}
-                        >
-                          <div>
-                            <div
-                              style={{
-                                font: "700 12px var(--body)",
-                                color: "#fff",
-                              }}
-                            >
-                              {e.name}
-                            </div>
-                            <div
-                              style={{
-                                font: "500 11px var(--body)",
-                                color: C.muteOnDark,
-                              }}
-                            >
-                              {fmtDT(e.date, e.time)} ·{" "}
-                              {e.registeredIds?.length || 0} registered
-                            </div>
-                          </div>
-                          <span
-                            style={{
-                              font: "700 10px var(--body)",
-                              color:
-                                e.status === "Live" ? C.coral : C.lime,
-                              background: "rgba(255,255,255,.1)",
-                              padding: "3px 8px",
-                              borderRadius: 99,
-                            }}
-                          >
-                            {e.status}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {myClubs.length === 0 && (
-                  <p
-                    style={{
-                      font: "400 13px/1.6 var(--body)",
-                      color: C.muteOnDark,
-                      margin: 0,
-                    }}
-                  >
-                    You haven't created any clubs yet. Go to the Clubs tab
-                    to set one up and invite your members.
-                  </p>
-                )}
-
-                {/* Pending verification nudge for unverified organizers */}
-                {me.is_organizer && me.role === "PLAYER" && (
-                  <div
-                    style={{
-                      marginTop: 14,
-                      padding: "10px 14px",
-                      background: "rgba(255,193,75,.15)",
-                      border: "1px solid rgba(255,193,75,.3)",
-                      borderRadius: 12,
-                      font: "500 12px/1.6 var(--body)",
-                      color: C.gold,
-                    }}
-                  >
-                    ⏳ Your organizer request is pending. We'll verify and
-                    promote your account within 24 hours. Email
-                    support@rallyrank.pro to speed it up.
-                  </div>
-                )}
-              </Card>
-            );
-          })()}
           {completionPct < 100 && (
             <Card style={{ marginBottom: 14 }}>
               <div
@@ -9067,15 +8829,23 @@ function makeClubCode() {
 // Owner-only panel on a club page: the invite link/QR, plus a "hand-off" claim
 // link you generate when you pre-create a club and want to transfer it to the
 // real owner. Collapsible so it doesn't clutter the page.
-function ClubOwnerTools({ club, me, reloadClubs }) {
+function ClubOwnerTools({ club, me, reloadClubs, players = [], events = [] }) {
   const [open, setOpen] = useState(true);
   const [claimCode, setClaimCode] = useState(club.claim_code || null);
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Club-specific stats — scoped to this club only
+  const clubMembers = players.filter((p) =>
+    (club.joined || []).includes(p.id)
+  );
+  const activeEvents = events.filter(
+    (e) =>
+      (e.club === club.name || e.admin_id === me.id) &&
+      (e.status === "Open" || e.status === "Live")
+  ).slice(0, 3);
+
   const ensureClaimLink = async () => {
-    // If a code already exists, reuse it; otherwise mint one and (best-effort)
-    // mark the club unclaimed so the recipient can take ownership.
     setGenerating(true);
     try {
       let code = claimCode;
@@ -9109,64 +8879,263 @@ function ClubOwnerTools({ club, me, reloadClubs }) {
   };
 
   return (
-    <Card style={{ marginBottom: 14 }}>
+    <Card style={{ marginBottom: 14, background: C.indigo }}>
+      {/* Header */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          marginBottom: 16,
           cursor: "pointer",
         }}
         onClick={() => setOpen((v) => !v)}
       >
-        <Label color={C.limeDk}>Owner tools — grow your club</Label>
-        <span style={{ color: C.mute, font: "700 13px var(--body)" }}>
+        <Label color={C.lime}>Club Owner Dashboard</Label>
+        <span style={{ color: C.muteOnDark, font: "700 13px var(--body)" }}>
           {open ? "▲" : "▼"}
         </span>
       </div>
-      {open && (
-        <div style={{ marginTop: 16 }}>
-          <SoftPanel style={{ marginBottom: 14 }}>
-            <ClubInvitePanel clubId={club.id} clubName={club.name} />
-          </SoftPanel>
 
+      {open && (
+        <>
+          {/* Stats row */}
           <div
             style={{
-              borderTop: `1px solid ${C.line}`,
+              display: "grid",
+              gridTemplateColumns: "repeat(3,1fr)",
+              gap: 10,
+              marginBottom: 16,
+            }}
+          >
+            {[
+              ["👥", clubMembers.length, "Members"],
+              ["📅", activeEvents.length, "Active events"],
+              ["⭐", (club.favorites || 0), "Favourites"],
+            ].map(([icon, val, label]) => (
+              <div
+                key={label}
+                style={{
+                  background: "rgba(255,255,255,.08)",
+                  borderRadius: 12,
+                  padding: "12px 10px",
+                  textAlign: "center",
+                }}
+              >
+                <div style={{ fontSize: 18 }}>{icon}</div>
+                <div
+                  style={{
+                    font: "800 22px var(--display)",
+                    color: "#fff",
+                    lineHeight: 1.1,
+                  }}
+                >
+                  {val}
+                </div>
+                <div
+                  style={{
+                    font: "500 11px var(--body)",
+                    color: C.muteOnDark,
+                  }}
+                >
+                  {label}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Member list */}
+          {clubMembers.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div
+                style={{
+                  font: "600 11px var(--body)",
+                  color: C.muteOnDark,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  marginBottom: 8,
+                }}
+              >
+                Members
+              </div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {clubMembers.slice(0, 6).map((p) => {
+                  const rating = p.badminton?.singles || p.pickleball?.singles || 0;
+                  return (
+                    <div
+                      key={p.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        background: "rgba(255,255,255,.06)",
+                        borderRadius: 10,
+                        padding: "8px 12px",
+                      }}
+                    >
+                      <AvatarBubble name={p.name} photo={p.photo} size={28} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div
+                          style={{
+                            font: "700 12px var(--body)",
+                            color: "#fff",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {p.name}
+                        </div>
+                      </div>
+                      {rating > 0 && (
+                        <span
+                          style={{
+                            font: "700 11px var(--body)",
+                            color: C.lime,
+                          }}
+                        >
+                          {rating.toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+                {clubMembers.length > 6 && (
+                  <div
+                    style={{
+                      font: "500 12px var(--body)",
+                      color: C.muteOnDark,
+                      textAlign: "center",
+                      padding: "4px 0",
+                    }}
+                  >
+                    +{clubMembers.length - 6} more members
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Active events */}
+          {activeEvents.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div
+                style={{
+                  font: "600 11px var(--body)",
+                  color: C.muteOnDark,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  marginBottom: 8,
+                }}
+              >
+                Active events
+              </div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {activeEvents.map((e) => (
+                  <div
+                    key={e.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      background: "rgba(255,255,255,.06)",
+                      borderRadius: 10,
+                      padding: "9px 12px",
+                    }}
+                  >
+                    <div>
+                      <div
+                        style={{
+                          font: "700 12px var(--body)",
+                          color: "#fff",
+                        }}
+                      >
+                        {e.name}
+                      </div>
+                      <div
+                        style={{
+                          font: "500 11px var(--body)",
+                          color: C.muteOnDark,
+                        }}
+                      >
+                        {fmtDT(e.date, e.time)} ·{" "}
+                        {e.registeredIds?.length || 0} registered
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        font: "700 10px var(--body)",
+                        color: e.status === "Live" ? C.coral : C.lime,
+                        background: "rgba(255,255,255,.1)",
+                        padding: "3px 8px",
+                        borderRadius: 99,
+                      }}
+                    >
+                      {e.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Invite tools */}
+          <div
+            style={{
+              borderTop: "1px solid rgba(255,255,255,.12)",
               paddingTop: 14,
             }}
           >
             <div
               style={{
                 font: "700 13px var(--body)",
-                color: C.ink,
-                marginBottom: 4,
+                color: "#fff",
+                marginBottom: 8,
               }}
             >
-              Hand this club to its owner
+              Grow your club
             </div>
-            <p
+            <SoftPanel style={{ marginBottom: 14 }}>
+              <ClubInvitePanel clubId={club.id} clubName={club.name} />
+            </SoftPanel>
+
+            <div
               style={{
-                font: "400 12px/1.6 var(--body)",
-                color: C.mute,
-                margin: "0 0 10px",
+                borderTop: "1px solid rgba(255,255,255,.12)",
+                paddingTop: 14,
               }}
             >
-              Pre-created this club for a venue you're onboarding? Generate a
-              one-time claim link and send it to them — when they open it and
-              sign in, ownership transfers to their account.
-            </p>
-            <Btn kind="ghost" onClick={ensureClaimLink} disabled={generating}>
-              {generating
-                ? "Working…"
-                : copied
-                ? "Claim link copied ✓"
-                : claimCode
-                ? "📋 Copy claim link"
-                : "🔗 Generate claim link"}
-            </Btn>
+              <div
+                style={{
+                  font: "700 13px var(--body)",
+                  color: "#fff",
+                  marginBottom: 4,
+                }}
+              >
+                Hand this club to its owner
+              </div>
+              <p
+                style={{
+                  font: "400 12px/1.6 var(--body)",
+                  color: C.muteOnDark,
+                  margin: "0 0 10px",
+                }}
+              >
+                Generate a one-time claim link — when they open it and sign in,
+                ownership transfers to their account.
+              </p>
+              <Btn kind="ghost" onClick={ensureClaimLink} disabled={generating}>
+                {generating
+                  ? "Working…"
+                  : copied
+                  ? "Claim link copied ✓"
+                  : claimCode
+                  ? "📋 Copy claim link"
+                  : "🔗 Generate claim link"}
+              </Btn>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </Card>
   );
@@ -10022,7 +9991,13 @@ function Clubs({
         {/* Owner tools: invite link/QR (always useful) + a hand-off claim link
             you can send when pre-creating a club for someone you've pitched. */}
         {club.adminId === me.id && (
-          <ClubOwnerTools club={club} me={me} reloadClubs={reloadClubs} />
+          <ClubOwnerTools
+            club={club}
+            me={me}
+            reloadClubs={reloadClubs}
+            players={players}
+            events={events}
+          />
         )}
 
         {/* Real stats */}
