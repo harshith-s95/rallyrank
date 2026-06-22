@@ -11009,6 +11009,7 @@ function EventsList({
               max_players: ev.maxPlayers,
               rounds: ev.rounds,
               description: ev.description,
+              recurrence: ev.recurrence || "none",
             })
             .select()
             .single();
@@ -11036,7 +11037,9 @@ function EventsList({
               ...data,
               maxPlayers: data.max_players,
               registeredIds: [playerId],
+              checkedInIds: [],
               entrants: 1,
+              recurrence: ev.recurrence || "none",
             },
             ...prev,
           ]);
@@ -15891,12 +15894,14 @@ function Account({ me, setMe, onLogout }) {
       country: me.country || null,
       phone: me.phone || null,
       club: me.club || null,
+      is_organizer: me.is_organizer || false,
     };
     const safe = {
       name: me.name || null,
       city: me.city || null,
       state: me.state || null,
       country: me.country || null,
+      is_organizer: me.is_organizer || false,
     };
     try {
       let { error } = await supabase
