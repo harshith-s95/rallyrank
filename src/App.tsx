@@ -8218,6 +8218,7 @@ function Profile({
     </button>
   </div>
 </div>
+          </div>
       </Card>
       <Card style={{ marginBottom: 14 }} pad={10}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
