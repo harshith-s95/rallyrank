@@ -8179,36 +8179,37 @@ function Profile({
           >
             {/* All buttons use the same pill shape, padding, and font size
                 so nothing looks bigger or smaller than its neighbour. */}
-            <SportToggle sport={sport} setSport={setSport} sports={me.sports} />
-            <button
-              onClick={() => shareRatingCard(me, sport)}
-              style={{
-                font: "700 14px var(--body)",
-                padding: "9px 16px",
-                borderRadius: 99,
-                cursor: "pointer",
-                border: "none",
-                background: C.sky,
-                color: C.indigo,
-                whiteSpace: "nowrap",
-              }}
-            >
+<div
+  style={{
+    display: "flex",
+    gap: 12,
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+  }}
+>
+  <SportToggle sport={sport} setSport={setSport} sports={me.sports} />
+
+  <button
+    onClick={() => shareRatingCard(me, sport)}
+    style={{
+      font: "700 14px var(--body)",
+      padding: "9px 16px",
+      borderRadius: 99,
+      cursor: "pointer",
+      border: "none",
+      background: C.sky,
+      color: C.indigo,
+      whiteSpace: "nowrap",
+      minHeight: 38,
+      marginLeft: "auto",
+    }}
+  >
+    📲 Share card
+  </button>
+</div>
               📲 Share card
-            </button>
-            <button
-              onClick={onEdit}
-              style={{
-                font: "700 14px var(--body)",
-                padding: "9px 16px",
-                borderRadius: 99,
-                cursor: "pointer",
-                border: "none",
-                background: C.lime,
-                color: C.indigo,
-                whiteSpace: "nowrap",
-              }}
-            >
-              Edit profile
             </button>
           </div>
         </div>
