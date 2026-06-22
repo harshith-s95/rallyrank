@@ -9710,7 +9710,9 @@ function Clubs({
                 {flagForCountry(c.country)} {c.city} · {c.members} members · ⭐{" "}
                 {c.favorites || 0}
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div
+                style={{ display: "flex", gap: 8, alignItems: "center" }}
+              >
                 <Btn
                   kind="ghost"
                   onClick={(e) => {
@@ -9732,9 +9734,23 @@ function Clubs({
                   </Btn>
                 )}
                 {joined && (
-                  <Pill color={C.limeDk} bg="#F0FBD9">
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      padding: "12px 20px",
+                      border: "2px solid transparent",
+                      boxSizing: "border-box",
+                      borderRadius: 99,
+                      background: "#F0FBD9",
+                      color: C.limeDk,
+                      font: "800 15px/1 var(--body)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
                     Joined ✓
-                  </Pill>
+                  </span>
                 )}
               </div>
             </Card>
