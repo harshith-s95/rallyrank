@@ -1762,7 +1762,7 @@ async function ensureRatingsForPlayer(player) {
     onConflict: "player_id,sport,format",
   });
 
-  if (error) alert("Ratings save failed: " + error.message);
+  if (error) toast("Ratings save failed: " + error.message, "error");
 }
 
 // Picks the sport a player has actually been active in, so the dashboard opens
@@ -1788,7 +1788,7 @@ async function registerForEvent(eventId, playerId) {
   );
 
   if (error) {
-    alert("Registration failed: " + error.message);
+    toast("Registration failed: " + error.message, "error");
     return false;
   }
 
@@ -1880,7 +1880,6 @@ export default function App() {
 
   // Complete onboarding: create the player object with only chosen sports
   const completeProfile = useCallback((player) => {
-    console.log("COMPLETE PROFILE PLAYER:", player);
 
     setSport(player.sports?.[0] || "badminton");
     setMe(player);
@@ -1888,9 +1887,6 @@ export default function App() {
     setTab("profile");
 
     supabase.auth.getSession().then(({ data, error }) => {
-      console.log("AUTH SESSION:", data?.session);
-      console.log("AUTH USER:", data?.session?.user);
-      console.log("AUTH USER ERROR:", error);
 
       const user = data?.session?.user;
       if (!user) {
@@ -1922,21 +1918,16 @@ export default function App() {
         .select()
         .single()
         .then(async ({ data: savedPlayer, error }) => {
-          console.log("UPSERT PLAYER RESULT");
-          console.log("savedPlayer:", savedPlayer);
-          console.log("error:", error);
 
           if (error) {
-            alert("PLAYER UPSERT FAILED: " + error.message);
+            toast("Sign-in error, please try again.", "error");
             return;
           }
 
           if (!savedPlayer) {
-            alert("PLAYER UPSERT RETURNED NULL");
+            toast("Sign-in error, please try again.", "error");
             return;
           }
-          console.log("UPSERT PLAYER:", savedPlayer);
-          console.log("UPSERT ERROR:", error);
 
           if (error || !savedPlayer) return;
 
@@ -2330,7 +2321,6 @@ export default function App() {
         }
       )
       .subscribe((status) => {
-        console.log("Realtime status:", status);
       });
 
     return () => {
@@ -3547,10 +3537,6 @@ function Auth({ mode, setMode, onAuthed, onBack, onLogo }) {
           password: pw,
         });
 
-        console.log("SIGNUP DATA:", data);
-        console.log("SIGNUP USER:", data?.user);
-        console.log("SIGNUP SESSION:", data?.session);
-        console.log("SIGNUP ERROR:", error);
 
         if (error) {
           setError(error.message);
@@ -3582,8 +3568,6 @@ function Auth({ mode, setMode, onAuthed, onBack, onLogo }) {
           .eq("auth_id", data.user.id)
           .single();
 
-        console.log("PLAYER FROM DB:", player);
-        console.log("PLAYER RATINGS:", player?.ratings);
 
         if (playerError || !player) {
           onAuthed(true); // send to onboarding/profile setup
@@ -6196,7 +6180,6 @@ function MatchHistoryOld({ playerId, defaultSport = "badminton" }) {
             new Date(a.matches?.played_at || 0)
         );
 
-      console.log("FIRST MATCH ROW", filtered[0]);
 
       const matchIds = filtered.map((r) => r.match_id);
 
@@ -6476,7 +6459,7 @@ function PlayerProfilePage({ playerId, me, players, onOpenPlayer, onBack }) {
                 marginTop: 4,
               }}
             >
-              @{player.handle}
+              @{String(player.handle || "").replace(/^@/, "")}
               {player.member_no ? ` · #${player.member_no}` : ""} ·{" "}
               {flagForCountry(player.country)} {player.city || "—"}{player.state ? `, ${player.state}` : ""}
             </div>
@@ -6556,7 +6539,9 @@ function PlayerProfilePage({ playerId, me, players, onOpenPlayer, onBack }) {
 
       {profileTab === "overview" && (
         <>
-          <FormatToggle format={format} setFormat={setFormat} />
+          <div style={{ marginBottom: 14 }}>
+            <FormatToggle format={format} setFormat={setFormat} />
+          </div>
           <Card>
             <Label>Current Rating</Label>
 
@@ -7130,28 +7115,35 @@ function BestPartners({ playerId, sport, format, onOpenPlayer }) {
 }
 function FormatToggle({ format, setFormat }) {
   return (
-    <Card style={{ marginBottom: 14 }} pad={10}>
-      <div style={{ display: "flex", gap: 8 }}>
-        {["singles", "doubles"].map((f) => (
-          <button
-            key={f}
-            onClick={() => setFormat(f)}
-            style={{
-              border: "none",
-              borderRadius: 99,
-              padding: "9px 14px",
-              cursor: "pointer",
-              background: format === f ? C.indigo : "transparent",
-              color: format === f ? "#fff" : C.mute,
-              font: "800 13px var(--body)",
-              textTransform: "capitalize",
-            }}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
-    </Card>
+    <div
+      style={{
+        display: "inline-flex",
+        background: "#fff",
+        borderRadius: 99,
+        padding: 4,
+        gap: 4,
+        border: `1px solid ${C.line}`,
+      }}
+    >
+      {["singles", "doubles"].map((f) => (
+        <button
+          key={f}
+          onClick={() => setFormat(f)}
+          style={{
+            font: "700 14px var(--body)",
+            padding: "9px 16px",
+            borderRadius: 99,
+            cursor: "pointer",
+            border: "none",
+            background: format === f ? C.indigo : "transparent",
+            color: format === f ? "#fff" : C.mute,
+            textTransform: "capitalize",
+          }}
+        >
+          {f}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -8098,14 +8090,47 @@ function Profile({
               </div>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 6,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            {/* All buttons use the same pill shape, padding, and font size
+                so nothing looks bigger or smaller than its neighbour. */}
             <SportToggle sport={sport} setSport={setSport} sports={me.sports} />
-            <Btn kind="sky" onClick={() => shareRatingCard(me, sport)}>
+            <button
+              onClick={() => shareRatingCard(me, sport)}
+              style={{
+                font: "700 14px var(--body)",
+                padding: "9px 16px",
+                borderRadius: 99,
+                cursor: "pointer",
+                border: "none",
+                background: C.sky,
+                color: C.indigo,
+                whiteSpace: "nowrap",
+              }}
+            >
               📲 Share card
-            </Btn>
-            <Btn kind="lime" onClick={onEdit}>
+            </button>
+            <button
+              onClick={onEdit}
+              style={{
+                font: "700 14px var(--body)",
+                padding: "9px 16px",
+                borderRadius: 99,
+                cursor: "pointer",
+                border: "none",
+                background: C.lime,
+                color: C.indigo,
+                whiteSpace: "nowrap",
+              }}
+            >
               Edit profile
-            </Btn>
+            </button>
           </div>
         </div>
       </Card>
@@ -8464,7 +8489,9 @@ function Profile({
       )}
       {profileTab === "h2h" && (
         <>
-          <FormatToggle format={statsFormat} setFormat={setStatsFormat} />
+          <div style={{ marginBottom: 14 }}>
+            <FormatToggle format={statsFormat} setFormat={setStatsFormat} />
+          </div>
           <HeadToHead
             playerId={me.id}
             sport={sport}
@@ -8475,7 +8502,9 @@ function Profile({
       )}
       {profileTab === "partners" && (
         <>
-          <FormatToggle format={statsFormat} setFormat={setStatsFormat} />
+          <div style={{ marginBottom: 14 }}>
+            <FormatToggle format={statsFormat} setFormat={setStatsFormat} />
+          </div>
 
           {statsFormat === "doubles" ? (
             <BestPartners
@@ -9380,7 +9409,7 @@ function Clubs({
       .select()
       .single();
     if (error) {
-      alert("Could not create club: " + error.message);
+      toast("Could not create club: " + error.message, "error");
       return;
     }
     // Owner is not auto-joined as a member (admin ≠ member).
@@ -9395,7 +9424,7 @@ function Clubs({
       .from("club_members")
       .insert({ club_id: id, player_id: me.id });
     if (error) {
-      alert("Could not join club: " + error.message);
+      toast("Could not join club: " + error.message, "error");
       return;
     }
     await reloadClubs?.();
@@ -10001,7 +10030,7 @@ function PlayerDiscovery({
       .update({ available_until: next })
       .eq("id", me.id);
     if (error) {
-      alert("Could not update availability: " + error.message);
+      toast("Could not update availability: " + error.message, "error");
     } else {
       setMe?.((prev) => (prev ? { ...prev, available_until: next } : prev));
       await reloadPlayers?.();
@@ -10652,19 +10681,17 @@ function EventsList({
             })
             .select()
             .single();
-          console.log("EVENT INSERT DATA:", data);
-          console.log("EVENT INSERT ERROR:", error);
 
           if (error) {
             console.error("Failed to create event:", error);
-            alert(error.message);
+            toast(error.message, "error");
             return;
           }
 
           const playerId = me.id === "me" ? null : me.id;
 
           if (!playerId) {
-            alert("Please log out and sign in again before registering.");
+            toast("Please sign in to register.", "error");
             return;
           }
 
@@ -10880,7 +10907,7 @@ function EventsList({
                           });
 
                         if (error) {
-                          alert(error.message);
+                          toast(error.message, "error");
                           return;
                         }
 
@@ -12067,7 +12094,7 @@ async function reverseCasualMatch(casualMatch, players) {
 // ── Feature 3: persisted challenge / partner / mixer request ────────────────
 async function sendMatchRequest({ me, toPlayerId, sport, format, intent }) {
   if (!me?.id || me.id === "me") {
-    alert("Please sign in again before sending requests.");
+    toast("Please sign in again.", "error");
     return false;
   }
   const { error } = await supabase.from("match_requests").upsert(
@@ -12082,7 +12109,7 @@ async function sendMatchRequest({ me, toPlayerId, sport, format, intent }) {
     { onConflict: "from_player,to_player,intent" }
   );
   if (error) {
-    alert("Could not send request: " + error.message);
+    toast("Could not send request: " + error.message, "error");
     return false;
   }
   await notify(toPlayerId, {
@@ -12533,7 +12560,7 @@ function CasualMatchInbox({ me, players, reloadPlayers, onRatingsChanged }) {
     const res = await applyCasualMatch({ ...m, pickle_target: 11 }, players);
 
     if (!res.ok) {
-      alert("Could not apply match: " + res.message);
+      toast("Could not apply match: " + res.message, "error");
       setBusyId(null);
       return;
     }
@@ -12550,7 +12577,7 @@ function CasualMatchInbox({ me, players, reloadPlayers, onRatingsChanged }) {
       .eq("id", m.id);
 
     if (error) {
-      alert("Could not accept match: " + error.message);
+      toast("Could not accept match: " + error.message, "error");
       setBusyId(null);
       return;
     }
@@ -12583,7 +12610,7 @@ function CasualMatchInbox({ me, players, reloadPlayers, onRatingsChanged }) {
       .single();
 
     if (readErr || !row) {
-      alert("Could not load match: " + (readErr?.message || "Not found"));
+      toast("Could not load match.", "error");
       setBusyId(null);
       return;
     }
@@ -12594,7 +12621,7 @@ function CasualMatchInbox({ me, players, reloadPlayers, onRatingsChanged }) {
       const res = await reverseCasualMatch(row, players);
 
       if (!res.ok) {
-        alert("Could not reverse rating: " + res.message);
+        toast("Could not reverse rating: " + res.message, "error");
         setBusyId(null);
         return;
       }
@@ -12610,7 +12637,7 @@ function CasualMatchInbox({ me, players, reloadPlayers, onRatingsChanged }) {
       .eq("id", row.id);
 
     if (updateErr) {
-      alert("Could not decline match: " + updateErr.message);
+      toast("Could not decline match: " + updateErr.message, "error");
       setBusyId(null);
       return;
     }
@@ -12678,7 +12705,7 @@ function CasualMatchInbox({ me, players, reloadPlayers, onRatingsChanged }) {
         );
 
         if (!res.ok) {
-          alert("Could not reverse match: " + res.message);
+          toast("Could not reverse match: " + res.message, "error");
           setBusyId(null);
           return;
         }
@@ -13371,7 +13398,7 @@ function EventDetail({
 
       if (error) {
         console.error("Event save failed:", error);
-        alert("Event save failed: " + error.message);
+        toast("Event save failed: " + error.message, "error");
       }
     },
     [setEvents]
@@ -13401,7 +13428,7 @@ function EventDetail({
       .eq("id", localEvent.id);
 
     if (error) {
-      alert("Delete failed: " + error.message);
+      toast("Delete failed: " + error.message, "error");
       return;
     }
 
@@ -13631,8 +13658,6 @@ function EventDetail({
               <Btn
                 kind="lime"
                 onClick={async () => {
-                  console.log("LOCAL EVENT BEFORE FINALIZE", localEvent);
-                  console.log("ROUNDS BEFORE FINALIZE", localEvent.rounds_data);
 
                   const latestEvent =
                     events.find((e) => e.id === localEvent.id) || localEvent;
@@ -13640,7 +13665,7 @@ function EventDetail({
                   const res = await finalizeEventRatings(latestEvent, players);
 
                   if (res.error) {
-                    alert("Finalize failed: " + res.error.message);
+                    toast("Finalize failed: " + res.error.message, "error");
                     return;
                   }
 
@@ -15763,7 +15788,7 @@ function Account({ me, setMe, onLogout }) {
                       Profile, ratings, leaderboard, event registration.
                     </div>
                   </div>
-                  <Btn kind="primary" onClick={() => {}}>
+                  <Btn kind="primary" onClick={() => toast("Coming soon — email support@rallyrank.pro to learn more.", "info")}>
                     Upgrade to Pro
                   </Btn>
                 </div>
@@ -15781,7 +15806,7 @@ function Account({ me, setMe, onLogout }) {
                   <span style={{ font: "500 14px var(--body)", color: C.mute }}>
                     No payment method on file.
                   </span>
-                  <Btn kind="ghost" onClick={() => {}}>
+                  <Btn kind="ghost" onClick={() => toast("Coming soon — email support@rallyrank.pro to learn more.", "info")}>
                     Add card / UPI
                   </Btn>
                 </div>
@@ -15846,7 +15871,7 @@ function Account({ me, setMe, onLogout }) {
                         {s}
                       </Pill>
                     ) : (
-                      <Btn kind="ghost" onClick={() => {}}>
+                      <Btn kind="ghost" onClick={() => toast("Coming soon — email support@rallyrank.pro to learn more.", "info")}>
                         Change password
                       </Btn>
                     )}
