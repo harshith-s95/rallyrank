@@ -4471,6 +4471,7 @@ function Onboarding({ onDone, onExit, onLogo, prefill }) {
     skill: d.skill.every((x) => x != null),
     tournament: d.tIdx != null,
     calibration: d.calIdx != null,
+    organizer: true,
     result: true,
   }[step];
 
@@ -4483,6 +4484,7 @@ function Onboarding({ onDone, onExit, onLogo, prefill }) {
     skill: "Self-assessment",
     tournament: "Experience",
     calibration: "Your level",
+    organizer: "Club / organiser",
     result: "Rating",
   };
 
