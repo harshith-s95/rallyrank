@@ -1909,6 +1909,7 @@ export default function App() {
               `${user.email?.split("@")[0]}-${user.id.slice(0, 6)}`,
 
             city: player.city || null,
+            state: player.state || null,
             country: player.country || "US",
             gender: player.gender || null,
             dominant_hand: player.dominant_hand || player.hand || null,
@@ -4402,6 +4403,7 @@ function Onboarding({ onDone, onExit, onLogo, prefill }) {
     name: prefill?.name || "",
     country: "IN",
     city: "",
+    state: "",
     gender: "",
     hand: "",
     dob: "",
@@ -4428,6 +4430,7 @@ function Onboarding({ onDone, onExit, onLogo, prefill }) {
       id: null,
       name: d.name || "You",
       city: d.city || "—",
+      state: d.state || null,
       country: d.country,
       handle:
         "@" +
@@ -4795,7 +4798,7 @@ function ONB_IdentityStep({ d, set }) {
           </div>
         )}
         <div
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}
+          style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}
         >
           <Field label="Country">
             <CountrySelect
@@ -4803,10 +4806,18 @@ function ONB_IdentityStep({ d, set }) {
               onChange={(v) => set({ country: v })}
             />
           </Field>
+          <Field label="State / Province">
+            <input
+              value={d.state}
+              placeholder="e.g. Washington"
+              onChange={(e) => set({ state: e.target.value })}
+              style={inp}
+            />
+          </Field>
           <Field label="City">
             <input
               value={d.city}
-              placeholder="e.g. Bengaluru"
+              placeholder="e.g. Bellevue"
               onChange={(e) => set({ city: e.target.value })}
               style={inp}
             />
@@ -6467,7 +6478,7 @@ function PlayerProfilePage({ playerId, me, players, onOpenPlayer, onBack }) {
             >
               @{player.handle}
               {player.member_no ? ` · #${player.member_no}` : ""} ·{" "}
-              {flagForCountry(player.country)} {player.city || "—"}
+              {flagForCountry(player.country)} {player.city || "—"}{player.state ? `, ${player.state}` : ""}
             </div>
             {(() => {
               const psd = player[sport] || {};
@@ -8042,7 +8053,7 @@ function Profile({
                   marginTop: 2,
                 }}
               >
-                {me.handle} · {flagForCountry(me.country)} {me.city} ·{" "}
+                {me.handle} · {flagForCountry(me.country)} {me.city}{me.state ? `, ${me.state}` : ""} ·{" "}
                 {me.gbrId}
               </div>
               {(homeClub || favCount > 0) && (
@@ -9999,6 +10010,21 @@ function PlayerDiscovery({
     setSavingAvail(false);
   };
 
+  // Normalise to lowercase-trimmed for comparison so "Bellevue " === "bellevue".
+  const myCity = (me?.city || "").trim().toLowerCase();
+  const myState = (me?.state || "").trim().toLowerCase();
+  // Same city AND same state (both must match when set; if user hasn't set their
+  // city yet, skip the filter so the list isn't empty during onboarding).
+  const sameLocale = (p) => {
+    if (!myCity) return true; // no city set yet — show everyone so list isn't empty
+    const pCity = (p.city || "").trim().toLowerCase();
+    const pState = (p.state || "").trim().toLowerCase();
+    const cityMatch = pCity === myCity;
+    // Only enforce state match if both users have a state set.
+    const stateMatch = !myState || !pState || pState === myState;
+    return cityMatch && stateMatch;
+  };
+
   const nearby = useMemo(
     () =>
       players
@@ -10008,6 +10034,7 @@ function PlayerDiscovery({
             !p.banned &&
             !p.merged_into &&
             p[sport] &&
+            sameLocale(p) &&
             Math.abs((p[sport][fmt] || 4500) - myRating) <= range
         )
         .sort(
@@ -10015,7 +10042,7 @@ function PlayerDiscovery({
             Math.abs((a[sport][fmt] || 4500) - myRating) -
             Math.abs((b[sport][fmt] || 4500) - myRating)
         ),
-    [players, sport, fmt, myRating, range]
+    [players, sport, fmt, myRating, range, myCity, myState]
   );
 
   // Players who've raised their hand ("looking for a game") near my level.
@@ -10028,6 +10055,7 @@ function PlayerDiscovery({
           !p.banned &&
           !p.merged_into &&
           p[sport] &&
+          sameLocale(p) &&
           p.available_until &&
           new Date(p.available_until).getTime() > now &&
           Math.abs((p[sport][fmt] || 4500) - myRating) <= range
@@ -10038,7 +10066,7 @@ function PlayerDiscovery({
           Math.abs((b[sport][fmt] || 4500) - myRating)
       )
       .slice(0, 3);
-  }, [players, sport, fmt, myRating, range, me?.id]);
+  }, [players, sport, fmt, myRating, range, me?.id, myCity, myState]);
 
   const challenge = async (id) => {
     const ok = await sendMatchRequest({
@@ -10401,10 +10429,23 @@ function PlayerDiscovery({
       {nearby.length === 0 && (
         <Card style={{ textAlign: "center", padding: 36 }}>
           <div style={{ fontSize: 32, marginBottom: 10 }}>🏸</div>
-          <p style={{ font: "400 14px/1.6 var(--body)", color: C.mute }}>
-            No players found within ±{range} of your rating. Try widening the
-            range.
-          </p>
+          {!myCity ? (
+            <p style={{ font: "400 14px/1.6 var(--body)", color: C.mute }}>
+              Set your city and state in{" "}
+              <strong style={{ color: C.ink }}>Profile → Account settings</strong>{" "}
+              to find players near you.
+            </p>
+          ) : (
+            <p style={{ font: "400 14px/1.6 var(--body)", color: C.mute }}>
+              No players found in{" "}
+              <strong style={{ color: C.ink }}>
+                {me?.city}
+                {me?.state ? `, ${me.state}` : ""}
+              </strong>{" "}
+              within ±{range} rating points. Try widening the range, or invite
+              your local club to join.
+            </p>
+          )}
         </Card>
       )}
       <div
@@ -15472,6 +15513,7 @@ function Account({ me, setMe, onLogout }) {
     const full = {
       name: me.name || null,
       city: me.city || null,
+      state: me.state || null,
       country: me.country || null,
       phone: me.phone || null,
       club: me.club || null,
@@ -15479,6 +15521,7 @@ function Account({ me, setMe, onLogout }) {
     const safe = {
       name: me.name || null,
       city: me.city || null,
+      state: me.state || null,
       country: me.country || null,
     };
     try {
@@ -15655,9 +15698,17 @@ function Account({ me, setMe, onLogout }) {
                     onChange={(v) => setMe({ ...me, country: v })}
                   />
                 </Field>
+                <Field label="State / Province">
+                  <input
+                    value={me.state || ""}
+                    placeholder="e.g. Washington"
+                    onChange={(e) => setMe({ ...me, state: e.target.value })}
+                    style={inp}
+                  />
+                </Field>
                 <Field label="City">
                   <input
-                    value={me.city}
+                    value={me.city || ""}
                     onChange={(e) => setMe({ ...me, city: e.target.value })}
                     style={inp}
                   />
