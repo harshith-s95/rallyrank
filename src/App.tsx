@@ -2857,7 +2857,7 @@ function TopBar({
             padding: 0,
           }}
         >
-          <Logo size={46} onDark />
+          <Logo size={56} onDark />
         </button>
         <nav
           className="rr-topnav"
@@ -2875,8 +2875,8 @@ function TopBar({
               key={k}
               onClick={() => setTab(k)}
               style={{
-                font: "700 13px var(--body)",
-                padding: "8px 14px",
+                font: "700 15px var(--body)",
+                padding: "10px 18px",
                 borderRadius: 99,
                 cursor: "pointer",
                 border: "none",
