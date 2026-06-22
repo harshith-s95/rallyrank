@@ -1220,6 +1220,25 @@ const DialSelect = ({ value, onChange }) => (
   </select>
 );
 // Utility: format a date+time string for display
+// Calculates the next occurrence date from a base date and recurrence pattern.
+// Returns an ISO date string (YYYY-MM-DD) for the next session.
+function nextRecurrenceDate(baseDateStr, recurrence) {
+  const base = new Date(baseDateStr + "T00:00:00");
+  if (isNaN(base.getTime())) {
+    // No valid base date — default to tomorrow.
+    base.setTime(Date.now() + 86400000);
+  }
+  const next = new Date(base);
+  switch (recurrence) {
+    case "daily":    next.setDate(next.getDate() + 1); break;
+    case "weekly":   next.setDate(next.getDate() + 7); break;
+    case "biweekly": next.setDate(next.getDate() + 14); break;
+    case "monthly":  next.setMonth(next.getMonth() + 1); break;
+    default:         next.setDate(next.getDate() + 7); break;
+  }
+  return next.toISOString().slice(0, 10);
+}
+
 const fmtDT = (date, time) => {
   if (!date) return "TBD";
   try {
@@ -1720,6 +1739,11 @@ export default function App() {
   // Captured from the URL (?joinClub= / ?claimClub= / ?join=) before auth, then
   // acted on once `me` exists. Survives the sign-in detour via sessionStorage.
   const [pendingDeepLink, setPendingDeepLink] = useState(null);
+  // True once we've routed the signed-in user on first load/login. Supabase
+  // re-fires SIGNED_IN when the app regains focus on mobile; on those re-fires
+  // we must NOT reset the tab to "profile", or switching apps bounces the user
+  // back to the dashboard. Only the first routing resets the tab.
+  const hasRoutedRef = useRef(false);
 
   // Navigate to dashboard; if signed out go to landing
   const goHome = useCallback(() => {
@@ -1860,7 +1884,19 @@ export default function App() {
       }
 
       setView("app");
-      setTab("profile");
+      // Don't stomp the tab the user was on. The initial tab state already
+      // restores from sessionStorage (survives mobile app-switch reloads). Only
+      // fall back to the dashboard when there's no saved tab at all (genuine
+      // first load). A useRef can't help here because a full reload resets it.
+      if (!hasRoutedRef.current) {
+        hasRoutedRef.current = true;
+        try {
+          const saved = sessionStorage.getItem("rr_active_tab");
+          if (!saved || !MAIN_TABS.includes(saved)) setTab("profile");
+        } catch {
+          setTab("profile");
+        }
+      }
     }
 
     // 1) check any session already present on load
@@ -1874,10 +1910,26 @@ export default function App() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_IN" && session?.user) {
+        // Only route to app on a genuine sign-in. TOKEN_REFRESHED (which fires
+        // when the app resumes from background on mobile) must NOT re-run
+        // handleUser, because that resets hasRoutedRef and can reset the tab.
         handleUser(session.user);
+      } else if (event === "TOKEN_REFRESHED" && session?.user) {
+        // Token silently refreshed (e.g. app resumed from background). Update
+        // the user object in case the session changed, but do NOT re-route or
+        // touch the tab — the user is already where they were.
+        supabase
+          .from("players")
+          .select("*")
+          .eq("auth_id", session.user.id)
+          .single()
+          .then(({ data }) => {
+            if (data) setMe((prev) => (prev ? { ...prev, ...data } : prev));
+          });
       } else if (event === "SIGNED_OUT") {
         setMe(null);
         setView("landing");
+        hasRoutedRef.current = false;
       }
     });
 
@@ -2378,6 +2430,7 @@ export default function App() {
             events={events}
             setEvents={setEvents}
             players={players}
+            clubs={clubs}
             reloadPlayers={reloadPlayers}
             reloadEvents={reloadEvents}
             onOpen={(id) => setActiveEventId(id)}
@@ -2579,10 +2632,10 @@ function Shell({ children, sport }) {
 // § TOPBAR + FOOTER ----------------------------------------------------------
 const TABS = [
   ["profile", "Profile"],
+  ["events", "Events"],
   ["ladders", "Leaderboard"],
   ["clubs", "Clubs"],
   ["discover", "Discover"],
-  ["events", "Events"],
   ["admin", "Admin"],
 ];
 const ROLE_META = {
@@ -10387,6 +10440,7 @@ function EventsList({
   events,
   setEvents,
   players,
+  clubs,
   reloadPlayers,
   reloadEvents,
   onOpen,
@@ -10395,6 +10449,7 @@ function EventsList({
   openLogPanelSignal,
 }) {
   const [creating, setCreating] = useState(false);
+  const [prefillEvent, setPrefillEvent] = useState(null);
   const [loggingMatch, setLoggingMatch] = useState(false);
   // If Discover sent us here with an opponent, open the log panel automatically.
   useEffect(() => {
@@ -10418,6 +10473,8 @@ function EventsList({
       <EventCreation
         me={me}
         players={players}
+        clubs={clubs}
+        prefill={prefillEvent}
         onDone={async (ev) => {
           const { data, error } = await supabase
             .from("events")
@@ -10468,8 +10525,9 @@ function EventsList({
             ...prev,
           ]);
           setCreating(false);
+          setPrefillEvent(null);
         }}
-        onCancel={() => setCreating(false)}
+        onCancel={() => { setCreating(false); setPrefillEvent(null); }}
       />
     );
 
@@ -10691,6 +10749,26 @@ function EventsList({
                       Registered ✓
                     </Pill>
                   )}
+                  {/* Recurring event shortcut — creates the next occurrence
+                      pre-filled with the same settings, saving re-entry. */}
+                  {e.recurrence && e.recurrence !== "none" &&
+                    (e.organizers?.includes(me.id) ||
+                      e.admin_id === me.id ||
+                      e.created_by === me.id) && (
+                      <Btn
+                        kind="ghost"
+                        onClick={() => {
+                          const nextDate = nextRecurrenceDate(
+                            e.date,
+                            e.recurrence
+                          );
+                          setPrefillEvent({ ...e, date: nextDate });
+                          setCreating(true);
+                        }}
+                      >
+                        🔁 Next session
+                      </Btn>
+                    )}
                 </div>
               </Card>
             );
@@ -10707,29 +10785,40 @@ function EventsList({
 
 // § EVENT CREATION -----------------------------------------------------------
 // Multi-step wizard for creating a tournament or mixer event
-function EventCreation({ me, players, onDone, onCancel }) {
-  const [step, setStep] = useState(0); // 0=details 1=organizers 2=review
+function EventCreation({ me, players, clubs = [], onDone, onCancel, prefill }) {
+  const [step, setStep] = useState(0);
   const [f, setF] = useState({
-    name: "",
-    sport: "Badminton",
-    format: "Doubles",
-    type: "Mixer",
-    date: "",
-    time: "18:00",
-    club: "",
-    courts: 2,
-    maxPlayers: 16,
-    rounds: 4,
-    pickleTarget: 11,
-    extraOrganizers: [],
-    description: "",
+    name: prefill?.name || "",
+    sport: prefill?.sport || "Badminton",
+    format: prefill?.format || "Doubles",
+    type: prefill?.type || "Mixer",
+    date: prefill?.date || "",       // intentionally blank on clone — pick a fresh date
+    time: prefill?.time || "18:00",
+    club: prefill?.club || "",
+    courts: prefill?.courts || 2,
+    maxPlayers: prefill?.maxPlayers || 16,
+    rounds: prefill?.rounds || 4,
+    pickleTarget: prefill?.pickleTarget || 11,
+    extraOrganizers: [],             // don't carry over organizers
+    description: prefill?.description || "",
+    recurrence: prefill?.recurrence || "none",
   });
   const set = (patch) => setF((prev) => ({ ...prev, ...patch }));
   const [orgSearch, setOrgSearch] = useState("");
+  const [venueSearch, setVenueSearch] = useState("");
   const orgMatches = players.filter(
     (p) =>
       p.id !== "me" && p.name.toLowerCase().includes(orgSearch.toLowerCase())
   );
+
+  // Club/venue picker: typing filters existing clubs to pick from, but a custom
+  // venue name is still allowed (not every venue is a registered club).
+  const [clubFocused, setClubFocused] = useState(false);
+  const clubMatches = (clubs || [])
+    .filter((c) =>
+      (c.name || "").toLowerCase().includes((f.club || "").toLowerCase())
+    )
+    .slice(0, 6);
 
   const finish = () => {
     // Ensure max players is a valid number meeting the format floor, even if the
@@ -10852,13 +10941,90 @@ function EventCreation({ me, players, onDone, onCancel }) {
                 <option>Tournament</option>
               </select>
             </Field>
-            <Field label="Club / venue">
-              <input
-                value={f.club}
-                onChange={(e) => set({ club: e.target.value })}
-                placeholder="Club or court name"
-                style={inp}
-              />
+            <Field label="Club / venue" hint="Pick from your clubs or type a custom venue name.">
+              {(() => {
+                const myClubs = clubs.filter(
+                  (c) => c.joined?.includes(me.id) || c.adminId === me.id
+                );
+                const filtered = venueSearch
+                  ? myClubs.filter((c) =>
+                      c.name.toLowerCase().includes(venueSearch.toLowerCase())
+                    )
+                  : myClubs;
+                return (
+                  <div style={{ position: "relative" }}>
+                    <input
+                      value={venueSearch || f.club || ""}
+                      onChange={(e) => {
+                        setVenueSearch(e.target.value);
+                        set({ club: e.target.value });
+                      }}
+                      placeholder="Search your clubs or type venue name…"
+                      style={inp}
+                      autoComplete="off"
+                    />
+                    {venueSearch.length > 0 && filtered.length > 0 && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: "100%",
+                          left: 0,
+                          right: 0,
+                          background: "#fff",
+                          border: `1px solid ${C.line}`,
+                          borderRadius: 12,
+                          zIndex: 50,
+                          marginTop: 4,
+                          boxShadow: "0 8px 24px rgba(36,27,58,.12)",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {filtered.slice(0, 6).map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              set({ club: c.name });
+                              setVenueSearch("");
+                            }}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                              width: "100%",
+                              padding: "11px 14px",
+                              background: "none",
+                              border: "none",
+                              borderBottom: `1px solid ${C.line}`,
+                              cursor: "pointer",
+                              textAlign: "left",
+                              font: "600 14px var(--body)",
+                              color: C.ink,
+                            }}
+                          >
+                            <span style={{ fontSize: 18 }}>
+                              {c.emoji || "🏸"}
+                            </span>
+                            <div>
+                              <div>{c.name}</div>
+                              {c.city && (
+                                <div
+                                  style={{
+                                    font: "500 11px var(--body)",
+                                    color: C.mute,
+                                  }}
+                                >
+                                  {c.city}
+                                </div>
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </Field>
             <Field label="Date">
               <input
@@ -10941,6 +11107,23 @@ function EventCreation({ me, players, onDone, onCancel }) {
                 </select>
               </Field>
             )}
+            <Field
+              label="Repeat this session"
+              hint="Creates a template — generate each next occurrence from the previous event with one tap."
+              style={{ gridColumn: "1/-1" }}
+            >
+              <select
+                value={f.recurrence || "none"}
+                onChange={(e) => set({ recurrence: e.target.value })}
+                style={inp}
+              >
+                <option value="none">No repeat — one-off session</option>
+                <option value="daily">Every day</option>
+                <option value="weekly">Every week (same day)</option>
+                <option value="biweekly">Every two weeks</option>
+                <option value="monthly">Monthly (same date)</option>
+              </select>
+            </Field>
             <Field
               label="Description (optional)"
               style={{ gridColumn: "1/-1" }}
@@ -16642,7 +16825,94 @@ const FAQ_SECTIONS = [
     ],
   },
   {
-    heading: "Ratings",
+    heading: "How to run an event — step by step",
+    items: [
+      {
+        q: "How do I host an event?",
+        a: "Go to Events → tap '+ Host event'. Fill in the name, sport, format (singles/doubles), number of courts, date, time, and max players. Pick your club from the search box or type any venue name. If you play regularly, set the Repeat option (daily/weekly/biweekly/monthly) so you can clone it next time with one tap.",
+      },
+      {
+        q: "How do I get players into my event?",
+        a: "Once the event is created, open it and share the invite. You get a link and a scannable QR code — drop the link in your WhatsApp or Facebook group instead of posting a poll. Anyone who taps it, signs in, and RSVPs is automatically added to your player list. No re-entering names.",
+      },
+      {
+        q: "What is check-in and why does it matter?",
+        a: "Check-in is how you tell the app who actually showed up, as opposed to who said they would. When you open the event and start check-in, players scan the check-in QR at the venue (different from the RSVP link) to mark themselves present. The matchmaker then only builds rounds from checked-in players — so no-shows are automatically excluded and you don't have to remove them manually.",
+      },
+      {
+        q: "How do I start the rounds and generate matches?",
+        a: "Once enough players are checked in, tap 'Start event' to go Live. Then tap '+ Generate round'. The app builds balanced matches for all courts automatically — fresh partners, no repeat opponents, small rating gaps. After each round, enter the scores, validate them, and generate the next round.",
+      },
+      {
+        q: "How does the matchmaker decide who plays who?",
+        a: "It balances four things at once: fairness (everyone plays a similar number of games), no repeat partners within the session, no repeat opponents within the session, and small rating gaps within each match. Everyone who's checked in gets a fair rotation.",
+      },
+      {
+        q: "Can I set up a recurring event so I don't have to re-enter everything each week?",
+        a: "Yes. When creating an event, choose a repeat pattern (daily, weekly, etc.). After that session, your event card shows a '🔁 Next session' button that opens the creation form pre-filled with all the same settings — just pick a date and you're done. This is designed for regular players who host the same session every week.",
+      },
+      {
+        q: "What happens to ratings after an event?",
+        a: "Once all scores are entered and validated, the organizer finalizes the event. Ratings update immediately for every player based on every match result in the session.",
+      },
+    ],
+  },
+  {
+    heading: "Casual matches & logging",
+    items: [
+      {
+        q: "What is a casual match / logging a match?",
+        a: "Logging a casual match lets you record a one-off game you played outside of a formal event — for example, a knock-around with a friend at the gym. You enter who played, the score, and the sport/format, and both players' ratings update just like they would in an event.",
+      },
+      {
+        q: "How is logging a casual match different from an event?",
+        a: "Events are organized sessions with multiple rounds, a host, check-in, and the automatic matchmaker. Casual match logging is for a single game you played informally. Both affect ratings equally — the difference is just the structure around them.",
+      },
+      {
+        q: "Where do I log a casual match?",
+        a: "Go to Discover and use the log-a-match panel. You can also find it when you open another player's profile — there's an option to log a match against them, which pre-fills their name.",
+      },
+      {
+        q: "Does the other player need to confirm the score?",
+        a: "Currently the score is accepted as entered. We may add confirmation in future versions. For now, both players should agree on the score before it's logged.",
+      },
+    ],
+  },
+  {
+    heading: "How ratings are calculated",
+    items: [
+      {
+        q: "What system does RallyRank use?",
+        a: "RallyRank uses an Elo-based system — the same family of rating systems used in chess, and adapted for racquet sports. Your rating goes up when you win and down when you lose, with the size of the change determined by how expected the result was.",
+      },
+      {
+        q: "Why does beating a weaker player move my rating less than beating a stronger one?",
+        a: "Because the rating system already expected you to win. If you beat someone rated 500 points below you, that's expected — the system rewards it with a small gain. If you beat someone 500 points above you, that's an upset — the system rewards it with a large gain. This is what makes the rating reflect real skill rather than just games played.",
+      },
+      {
+        q: "How big are the typical rating changes?",
+        a: "A typical win against an evenly-matched opponent moves you 20–40 points. A decisive upset can move you 60–80 points. A loss to someone much weaker can cost you a similar amount. Early on (Provisional), changes are larger to let your rating settle quickly.",
+      },
+      {
+        q: "Why are singles and doubles tracked separately?",
+        a: "Because they test different skills — doubles involves positioning, communication, and partnership dynamics that singles doesn't. You can genuinely be a different level in each, so keeping them separate gives you a more accurate rating for each format.",
+      },
+      {
+        q: "What's the difference between Provisional and Verified?",
+        a: "Provisional means your rating is still being established. Once you've played at least 10 games against 4 or more different opponents, you become Verified — meaning there's enough data from varied matchups to trust the number. Provisional ratings change faster; Verified ratings are more stable.",
+      },
+      {
+        q: "Can my rating go below 3,000 or above 8,500?",
+        a: "The displayed scale runs 3,000–8,500, but the underlying calculation isn't capped — it's just that reaching the boundaries is extremely rare in practice. If you somehow got there, the display would show the boundary value.",
+      },
+      {
+        q: "Does my rating decay if I stop playing?",
+        a: "Yes. If you haven't played in a long time, your rating moves toward the center of the scale over time. This stops highly-rated players from holding an old number indefinitely without playing. The decay is gradual and won't devastate a short break.",
+      },
+    ],
+  },
+  {
+    heading: "Ratings — quick reference",
     items: [
       {
         q: "How does the rating scale work?",
