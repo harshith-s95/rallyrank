@@ -1316,41 +1316,158 @@ const SportToggle = React.memo(function SportToggle({
   setSport,
   sports,
 }) {
+  const [showTennisSoon, setShowTennisSoon] = useState(false);
   const all = [
     ["badminton", "🏸 Badminton", C.limeDk],
     ["pickleball", "🥒 Pickleball", C.coralDk],
+    ["tennis", "🎾 Tennis", "#4CAF82"],
   ];
-  const shown = all.filter(([k]) => !sports || sports.includes(k));
+  const shown = all.filter(([k]) => !sports || sports.includes(k) || k === "tennis");
   if (shown.length < 2) return null;
   return (
-    <div
-      style={{
-        display: "inline-flex",
-        background: "#fff",
-        borderRadius: 99,
-        padding: 4,
-        gap: 4,
-        border: `1px solid ${C.line}`,
-      }}
-    >
-      {shown.map(([k, l, col]) => (
-        <button
-          key={k}
-          onClick={() => setSport(k)}
+    <>
+      <div
+        style={{
+          display: "inline-flex",
+          background: "#fff",
+          borderRadius: 99,
+          padding: 4,
+          gap: 4,
+          border: `1px solid ${C.line}`,
+        }}
+      >
+        {shown.map(([k, l, col]) => (
+          <button
+            key={k}
+            onClick={() => {
+              if (k === "tennis") {
+                setShowTennisSoon(true);
+              } else {
+                setSport(k);
+              }
+            }}
+            style={{
+              font: "700 14px var(--body)",
+              padding: "9px 16px",
+              borderRadius: 99,
+              cursor: "pointer",
+              border: "none",
+              background:
+                k === "tennis"
+                  ? "transparent"
+                  : sport === k
+                  ? col
+                  : "transparent",
+              color:
+                k === "tennis"
+                  ? C.mute
+                  : sport === k
+                  ? "#fff"
+                  : C.mute,
+              position: "relative",
+            }}
+          >
+            {l}
+            {k === "tennis" && (
+              <span
+                style={{
+                  position: "absolute",
+                  top: -4,
+                  right: -2,
+                  background: C.coral,
+                  color: "#fff",
+                  font: "700 8px var(--body)",
+                  padding: "1px 4px",
+                  borderRadius: 99,
+                  letterSpacing: "0.04em",
+                  lineHeight: 1.4,
+                  pointerEvents: "none",
+                }}
+              >
+                SOON
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Coming-soon modal — shown when tennis is tapped, intercepts before
+          sport state changes so nothing downstream sees "tennis" */}
+      {showTennisSoon && (
+        <div
+          onClick={() => setShowTennisSoon(false)}
           style={{
-            font: "700 14px var(--body)",
-            padding: "9px 16px",
-            borderRadius: 99,
-            cursor: "pointer",
-            border: "none",
-            background: sport === k ? col : "transparent",
-            color: sport === k ? "#fff" : C.mute,
+            position: "fixed",
+            inset: 0,
+            background: "rgba(36,27,58,.55)",
+            display: "grid",
+            placeItems: "center",
+            zIndex: 999,
+            padding: 24,
           }}
         >
-          {l}
-        </button>
-      ))}
-    </div>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#fff",
+              borderRadius: 24,
+              padding: "32px 28px",
+              maxWidth: 380,
+              width: "100%",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: 52, marginBottom: 12 }}>🎾</div>
+            <h2
+              style={{
+                font: "700 24px var(--display)",
+                color: C.ink,
+                margin: "0 0 10px",
+              }}
+            >
+              Tennis is coming soon
+            </h2>
+            <p
+              style={{
+                font: "400 14px/1.65 var(--body)",
+                color: C.mute,
+                margin: "0 0 22px",
+              }}
+            >
+              We're building proper tennis support — sets, games, tiebreaks, and
+              its own rating track. Want to be first to know when it launches?
+            </p>
+            <a
+              href="mailto:support@rallyrank.pro?subject=Tennis%20interest&body=I'd%20like%20to%20use%20RallyRank%20for%20tennis."
+              style={{
+                display: "block",
+                background: C.indigo,
+                color: "#fff",
+                font: "700 14px var(--body)",
+                padding: "13px 20px",
+                borderRadius: 99,
+                textDecoration: "none",
+                marginBottom: 10,
+              }}
+            >
+              Register interest →
+            </a>
+            <button
+              onClick={() => setShowTennisSoon(false)}
+              style={{
+                background: "none",
+                border: "none",
+                font: "600 13px var(--body)",
+                color: C.mute,
+                cursor: "pointer",
+              }}
+            >
+              Back to badminton/pickleball
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 });
 // Tier bar for landing page scale display
@@ -17087,59 +17204,315 @@ const FAQ_SECTIONS = [
   },
 ];
 
+// Groups of sections shown per page tab
+const FAQ_PAGES = [
+  {
+    label: "Getting started",
+    emoji: "👋",
+    sectionHeadings: ["Getting started"],
+  },
+  {
+    label: "Events & play",
+    emoji: "🏸",
+    sectionHeadings: [
+      "How to run an event — step by step",
+      "Casual matches & logging",
+      "Matches & scoring",
+      "Events & mixers",
+    ],
+  },
+  {
+    label: "Ratings",
+    emoji: "📈",
+    sectionHeadings: [
+      "How ratings are calculated",
+      "Ratings — quick reference",
+    ],
+  },
+  {
+    label: "Clubs & account",
+    emoji: "🏆",
+    sectionHeadings: [
+      "Clubs",
+      "Profile & sharing",
+      "Account, privacy & support",
+    ],
+  },
+];
+
 function FAQPage() {
-  // Track which item is open per "section-index" key. One open at a time per
-  // section keeps it tidy; here we allow multiple across sections.
+  const [activePage, setActivePage] = useState(0);
+  const [query, setQuery] = useState("");
   const [openKey, setOpenKey] = useState(null);
+
+  // When searching, show all sections that have a matching question/answer
+  const searching = query.trim().length >= 2;
+  const q = query.trim().toLowerCase();
+
+  const searchResults = searching
+    ? FAQ_SECTIONS.flatMap((section, si) =>
+        section.items
+          .map((item, ii) => ({ ...item, section: section.heading, key: `${si}-${ii}` }))
+          .filter(
+            (item) =>
+              item.q.toLowerCase().includes(q) ||
+              item.a.toLowerCase().includes(q)
+          )
+      )
+    : [];
+
+  // Sections to show on the current page (when not searching)
+  const currentPageDef = FAQ_PAGES[activePage];
+  const currentSections = FAQ_SECTIONS.filter((s) =>
+    currentPageDef.sectionHeadings.includes(s.heading)
+  );
 
   return (
     <Shell>
+      {/* Header */}
       <div style={{ background: C.indigo }}>
-        <div style={{ maxWidth: 760, margin: "0 auto", padding: "20px 22px" }}>
+        <div style={{ maxWidth: 800, margin: "0 auto", padding: "20px 22px" }}>
           <a href="/" style={{ display: "inline-block" }}>
             <Logo size={36} onDark />
           </a>
         </div>
       </div>
-      <div style={{ maxWidth: 760, margin: "0 auto", padding: "40px 22px 80px" }}>
+
+      <div style={{ maxWidth: 800, margin: "0 auto", padding: "32px 22px 80px" }}>
         <Label>Help</Label>
         <H1>Frequently asked questions</H1>
-        <Sub>
-          Everything about ratings, mixers, and clubs. Can't find it? Email{" "}
-          support@rallyrank.pro.
-        </Sub>
+        <Sub>Can't find what you need? Email support@rallyrank.pro.</Sub>
 
-        {FAQ_SECTIONS.map((section, si) => (
-          <div key={section.heading} style={{ marginTop: 30 }}>
-            <h2
+        {/* Search box */}
+        <div style={{ position: "relative", margin: "22px 0 0" }}>
+          <span
+            style={{
+              position: "absolute",
+              left: 14,
+              top: "50%",
+              transform: "translateY(-50%)",
+              fontSize: 16,
+              pointerEvents: "none",
+            }}
+          >
+            🔍
+          </span>
+          <input
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpenKey(null);
+            }}
+            placeholder="Search questions…"
+            style={{
+              ...inp,
+              paddingLeft: 40,
+              background: "#fff",
+            }}
+          />
+          {query && (
+            <button
+              onClick={() => setQuery("")}
               style={{
-                font: "700 18px var(--display)",
-                color: C.ink,
-                margin: "0 0 12px",
+                position: "absolute",
+                right: 12,
+                top: "50%",
+                transform: "translateY(-50%)",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                font: "700 14px var(--body)",
+                color: C.mute,
               }}
             >
-              {section.heading}
-            </h2>
-            <div style={{ display: "grid", gap: 8 }}>
-              {section.items.map((item, ii) => {
-                const key = `${si}-${ii}`;
-                return (
-                  <FAQItem
-                    key={key}
-                    q={item.q}
-                    a={item.a}
-                    open={openKey === key}
-                    onToggle={() =>
-                      setOpenKey(openKey === key ? null : key)
-                    }
-                  />
-                );
-              })}
+              ✕
+            </button>
+          )}
+        </div>
+
+        {/* Page tabs — hidden while searching */}
+        {!searching && (
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              marginTop: 22,
+              flexWrap: "wrap",
+            }}
+          >
+            {FAQ_PAGES.map((page, pi) => (
+              <button
+                key={page.label}
+                onClick={() => {
+                  setActivePage(pi);
+                  setOpenKey(null);
+                }}
+                style={{
+                  font: "700 13px var(--body)",
+                  padding: "9px 16px",
+                  borderRadius: 99,
+                  border: `2px solid ${
+                    activePage === pi ? C.indigo : C.line
+                  }`,
+                  background: activePage === pi ? C.indigo : "#fff",
+                  color: activePage === pi ? "#fff" : C.ink,
+                  cursor: "pointer",
+                }}
+              >
+                {page.emoji} {page.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Search results */}
+        {searching && (
+          <div style={{ marginTop: 22 }}>
+            {searchResults.length === 0 ? (
+              <p
+                style={{
+                  font: "500 14px var(--body)",
+                  color: C.mute,
+                  margin: "12px 0",
+                }}
+              >
+                No questions matched "{query.trim()}". Try a different word, or
+                email support@rallyrank.pro.
+              </p>
+            ) : (
+              <>
+                <p
+                  style={{
+                    font: "600 12px var(--body)",
+                    color: C.mute,
+                    margin: "0 0 12px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  {searchResults.length} result
+                  {searchResults.length !== 1 ? "s" : ""}
+                </p>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {searchResults.map((item) => (
+                    <div key={item.key}>
+                      <p
+                        style={{
+                          font: "600 11px var(--body)",
+                          color: C.mute,
+                          margin: "0 0 4px",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.04em",
+                        }}
+                      >
+                        {item.section}
+                      </p>
+                      <FAQItem
+                        q={item.q}
+                        a={item.a}
+                        open={openKey === item.key}
+                        onToggle={() =>
+                          setOpenKey(openKey === item.key ? null : item.key)
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Paged content */}
+        {!searching && (
+          <div style={{ marginTop: 24 }}>
+            {currentSections.map((section, si) => (
+              <div key={section.heading} style={{ marginBottom: 28 }}>
+                <h2
+                  style={{
+                    font: "700 18px var(--display)",
+                    color: C.ink,
+                    margin: "0 0 10px",
+                  }}
+                >
+                  {section.heading}
+                </h2>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {section.items.map((item, ii) => {
+                    const key = `${activePage}-${si}-${ii}`;
+                    return (
+                      <FAQItem
+                        key={key}
+                        q={item.q}
+                        a={item.a}
+                        open={openKey === key}
+                        onToggle={() =>
+                          setOpenKey(openKey === key ? null : key)
+                        }
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {/* Page navigation */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginTop: 24,
+                paddingTop: 20,
+                borderTop: `1px solid ${C.line}`,
+              }}
+            >
+              <button
+                onClick={() => { setActivePage((p) => p - 1); setOpenKey(null); }}
+                disabled={activePage === 0}
+                style={{
+                  font: "700 13px var(--body)",
+                  color: activePage === 0 ? C.line : C.indigo,
+                  background: "none",
+                  border: "none",
+                  cursor: activePage === 0 ? "default" : "pointer",
+                }}
+              >
+                ← {activePage > 0 ? FAQ_PAGES[activePage - 1].label : ""}
+              </button>
+              <span style={{ font: "500 12px var(--body)", color: C.mute }}>
+                {activePage + 1} / {FAQ_PAGES.length}
+              </span>
+              <button
+                onClick={() => { setActivePage((p) => p + 1); setOpenKey(null); }}
+                disabled={activePage === FAQ_PAGES.length - 1}
+                style={{
+                  font: "700 13px var(--body)",
+                  color:
+                    activePage === FAQ_PAGES.length - 1 ? C.line : C.indigo,
+                  background: "none",
+                  border: "none",
+                  cursor:
+                    activePage === FAQ_PAGES.length - 1 ? "default" : "pointer",
+                }}
+              >
+                {activePage < FAQ_PAGES.length - 1
+                  ? FAQ_PAGES[activePage + 1].label
+                  : ""}{" "}
+                →
+              </button>
             </div>
           </div>
-        ))}
+        )}
 
-        <div style={{ marginTop: 40, display: "flex", gap: 18, flexWrap: "wrap" }}>
+        <div
+          style={{
+            marginTop: 36,
+            display: "flex",
+            gap: 18,
+            flexWrap: "wrap",
+          }}
+        >
           <a href="/" style={{ color: C.indigo, font: "700 14px var(--body)" }}>
             ← Back to RallyRank
           </a>
