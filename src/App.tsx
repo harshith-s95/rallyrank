@@ -6516,15 +6516,16 @@ function PlayerProfilePage({ playerId, me, players, onOpenPlayer, onBack }) {
       </Btn>
 
       <Card color={C.indigo}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 12,
-          }}
-        >
-          <div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 12,
+            }}
+          >
+            <div>
             <div
               style={{
                 color: "#fff",
@@ -6557,19 +6558,50 @@ function PlayerProfilePage({ playerId, me, players, onOpenPlayer, onBack }) {
               );
             })()}
           </div>
-
-          <SportToggle
-            sport={sport}
-            setSport={setSport}
-            sports={player.sports}
-          />
-
-          <div style={{ marginTop: 8 }}>
-            <Btn kind="sky" onClick={() => shareRatingCard(player, sport)}>
-              📲 Share card
-            </Btn>
           </div>
 
+          {/* Controls row — full width below name so nothing overflows on mobile */}
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            <SportToggle
+              sport={sport}
+              setSport={setSport}
+              sports={player.sports}
+            />
+            <div
+              style={{
+                display: "inline-flex",
+                background: C.sky,
+                borderRadius: 99,
+                padding: 4,
+                marginLeft: "auto",
+              }}
+            >
+              <button
+                onClick={() => shareRatingCard(player, sport)}
+                style={{
+                  font: "700 14px var(--body)",
+                  padding: "9px 16px",
+                  borderRadius: 99,
+                  cursor: "pointer",
+                  border: "none",
+                  background: "transparent",
+                  color: C.indigo,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                📲 Share card
+              </button>
+            </div>
+          </div>
+
+          {/* Singles / Doubles toggle */}
           <div style={{ display: "flex", gap: 6 }}>
             {["singles", "doubles"].map((f) => (
               <button
@@ -8085,9 +8117,7 @@ function Profile({
           style={{
             position: "relative",
             display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
+            flexDirection: "column",
             gap: 14,
           }}
         >
@@ -11019,15 +11049,8 @@ function EventsList({
 
   return (
     <div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 16,
-        }}
-      >
-        <div>
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 12 }}>
           <Label>Play</Label>
           <h1 style={{ font: "700 34px var(--display)", margin: "4px 0 0" }}>
             Events
